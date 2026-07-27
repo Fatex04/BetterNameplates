@@ -1,0 +1,45 @@
+BetterNameplates Changelog
+==========================
+
+Discord
+-------
+https://discord.gg/ZfYDHV6Qgs
+
+V1.0 - Initial Release
+----------------------
+
+Modern Nameplates extension
+- Extends Blizzard's Modern nameplates in WoW Classic Era without replacing them.
+- Uses Blizzard CVars for taint-safe nameplate scaling.
+
+Nameplate size
+- Added stable nameplate scaling from 0.5 to 2.0 in 0.1 steps.
+- Added compact horizontal proportions at smaller scales.
+
+Unit levels
+- Added enemy, neutral, and friendly unit levels inside the health bar.
+- Added left and right placement beside the unit name.
+- Added [35], lvl. 35, and plain 35 formats.
+- Added gray, green, yellow, and red difficulty colors.
+- Added a larger skull indicator for units at least 10 levels above the player.
+
+Threat percentage
+- Added threat percentages to visible enemy nameplates.
+- Added display on all enemies or only the highest-threat enemy.
+- Added above/below placement with left, center, and right alignment.
+- Added size, signed vertical offset, and background opacity controls.
+- Added a text-only mode by setting background opacity to 0.
+- Added optional dynamic growth based on threat percentage and a configurable maximum size.
+- Added the option to show threat only while in combat and after threat has been generated.
+- Added optional percentage text coloring from green through yellow and orange to red.
+
+Interface and compatibility
+- Added a movable tabbed BNP settings window.
+- Added a draggable BNP minimap button.
+- Added a dedicated Changelog tab and Discord community link.
+- Added automatic localization for supported WoW client languages.
+- Added Classic Era unit-token fallbacks for reliable world nameplate updates.
+- Added safeguards against restricted-frame measurement and direct nameplate scaling taint.
+
+Known limitation
+- Friendly nameplates cannot be modified by addons in protected PvE instances.

@@ -1,0 +1,13 @@
+## Interface: 11509, 11508
+## Title: BetterNameplates
+## Notes: A lightweight extension for Blizzard's Modern nameplates in WoW Classic Era.
+## Notes-deDE: Eine schlanke Erweiterung für Blizzards Modern-Nameplates in WoW Classic Era.
+## Author: Bayram
+## Version: 1.0
+## SavedVariables: BetterNameplatesDB
+## IconTexture: Interface\AddOns\BetterNameplates\assets\bnp_logo.tga
+
+Locales.lua
+Core.lua
+Options.lua
+Minimap.lua

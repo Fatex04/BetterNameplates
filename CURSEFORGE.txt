@@ -1,0 +1,15 @@
+BetterNameplates - CurseForge
+=============================
+
+English summary
+---------------
+BetterNameplates is a lightweight, taint-safe extension for Blizzard's Modern nameplates in WoW Classic Era that adds compact scaling, in-bar unit levels, and fully customizable dynamic threat percentages without replacing the default nameplates.
+
+Categories
+----------
+Main category: Unit Frames
+Additional categories: Combat, Tank
+
+Discord
+-------
+https://discord.gg/ZfYDHV6Qgs
