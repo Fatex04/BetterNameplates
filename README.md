@@ -1,0 +1,2 @@
+# BetterNameplates
+WoW Classic Adon
