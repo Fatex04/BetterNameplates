@@ -22,6 +22,8 @@ Controls and previews
 - Added a live-preview checkbox for both preview areas.
 - Added independent level scaling from 0.5 to 2.0; 1.0 preserves the original size.
 - Added independent 0.5 to 2.0 controls for unit-name and visible HP-number size.
+- Fixed BetterBlizzPlates overwriting BNP's name and HP-number size after its own updates.
+- BNP now reapplies both configured sizes after BetterBlizzPlates refreshes either element.
 - Long unit names now end in ... and reserve the measured width of visible HP numbers.
 - Fixed repeated name updates bypassing truncation because of retained font-string anchors.
 - Added a gold default marker aligned exactly with the slider thumb positions and a default-value label to every slider.

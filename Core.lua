@@ -875,6 +875,55 @@ function addon:UpdatePlate(unit)
     end
 end
 
+function addon:RefreshCompatibleUnitFrame(unitFrame)
+    if not self.db
+        or not unitFrame
+        or not unitFrame.unit
+        or not unitFrame.healthBar
+    then
+        return
+    end
+
+    local plate = C_NamePlate
+        and C_NamePlate.GetNamePlateForUnit
+        and C_NamePlate.GetNamePlateForUnit(unitFrame.unit)
+    local forbidden = plate and plate.IsForbidden and plate:IsForbidden()
+    if not plate or forbidden then
+        return
+    end
+
+    self.activePlates[unitFrame.unit] = plate
+    local overlay = CreateOverlay(plate, unitFrame)
+    UpdateLevel(unitFrame.unit, unitFrame, overlay)
+end
+
+function addon:InstallCompatibilityHooks()
+    if self.betterBlizzPlatesHooksInstalled
+        or not hooksecurefunc
+        or type(BBP) ~= "table"
+    then
+        return
+    end
+
+    local installed = false
+    local function HookBetterBlizzPlatesFunction(functionName)
+        if type(BBP[functionName]) ~= "function" then
+            return
+        end
+
+        hooksecurefunc(BBP, functionName, function(unitFrame)
+            addon:RefreshCompatibleUnitFrame(unitFrame)
+        end)
+        installed = true
+    end
+
+    -- BetterBlizzPlates reapplies both values during its own updates. Running
+    -- after those functions keeps BNP's name and HP sliders authoritative.
+    HookBetterBlizzPlatesFunction("HealthNumbers")
+    HookBetterBlizzPlatesFunction("ClassColorAndScaleNames")
+    self.betterBlizzPlatesHooksInstalled = installed
+end
+
 function addon:HidePlate(unit)
     local plate = self.activePlates[unit]
     local guid = UnitGUID(unit)
@@ -1058,6 +1107,11 @@ end)
 eventFrame:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         local loadedAddon = ...
+        if loadedAddon == "BetterBlizzPlates" and addon.db then
+            addon:InstallCompatibilityHooks()
+            addon:ApplyAll()
+            return
+        end
         if loadedAddon ~= addonName then
             return
         end
@@ -1071,6 +1125,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         if addon.CreateMinimapButton then
             addon:CreateMinimapButton()
         end
+        addon:InstallCompatibilityHooks()
 
         eventFrame:RegisterEvent("PLAYER_LOGIN")
         eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")

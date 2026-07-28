@@ -22,6 +22,7 @@ local CHANGELOG_TEXT = [=[|cff9d8cffV1.1|r
 • Added live nameplate and animated threat previews.
 • Added independent 0.5-2.0 level scaling with the original 1.0 size as default.
 • Added independent 0.5-2.0 size controls for names and visible HP numbers.
+• Fixed BetterBlizzPlates overwriting BNP's name and HP-number sizes.
 • Long names reserve the measured HP-number width and end in ... without overlap.
 • Fixed repeated updates bypassing name truncation because of retained anchors.
 • All sliders show their original default with a precisely aligned gold marker.

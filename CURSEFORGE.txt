@@ -15,6 +15,7 @@ V1.1 highlights
 - Friendly units always use their available numeric level
 - Independent level scaling and automatic long-name truncation
 - Independent name and visible HP-number scaling
+- BetterBlizzPlates compatibility keeps BNP name and HP sizes authoritative
 - Dynamic HP-number width reservation prevents text overlap
 - Precisely aligned default markers on every slider
 - Resizable settings window with saved size and position
