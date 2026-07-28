@@ -28,6 +28,7 @@ Funktionen
 - Automatische Sprache anhand des WoW-Clients
 - Eigener Changelog-Tab mit Discord-Community-Link
 - Threat-Aktualisierung alle 0,1 Sekunden mit Schutz vor kurzem Flackern
+- Neue Threat-Werte einschließlich 0 % ersetzen alte 100 % sofort
 - Nameplate-Funktionen und Skalierung separat abschaltbar; Threat bleibt unabhängig
 - Live-Vorschau für Nameplates und animierte Threat-Vorschau von Grün bis Rot
 - Blaues Tiny-Threat-Katzen-Icon ausschließlich im Threat-Tab
@@ -35,6 +36,7 @@ Funktionen
 - Sicherheitsabfrage vor dem Zurücksetzen aller Einstellungen
 - Level unabhängig von Namen und Nameplate zwischen 0,5 und 2,0 skalieren
 - Namen und sichtbare HP-Zahlen unabhängig zwischen 0,5 und 2,0 skalieren
+- Direkte Fontgrößenänderung für Blizzard-Namen und automatisch erkannte HP-Texte
 - Name- und HP-Größe werden mit BetterBlizzPlates synchronisiert und sofort aktualisiert
 - Lange Namen werden vor der gemessenen HP-Zahl passend mit ... gekürzt
 - Goldene Standardmarkierung und Standardwert an jedem Regler
@@ -62,6 +64,7 @@ Weitere Befehle:
 /bnp level links
 /bnp level rechts
 /bnp level aus
+/bnp debug
 /bnp reset
 
 Hinweis

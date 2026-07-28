@@ -8,6 +8,7 @@ BetterNameplates is a lightweight, taint-safe extension for Blizzard's Modern na
 V1.1 highlights
 ---------------
 - Live 0.1-second threat updates with low-FPS flicker protection
+- Immediate replacement of stale 100% threat when aggro changes
 - Correct dynamic threat growth and freely selectable maximum size
 - Independent nameplate, scaling, level, threat, minimap, and preview switches
 - Live nameplate and animated threat previews
@@ -15,6 +16,7 @@ V1.1 highlights
 - Friendly units always use their available numeric level
 - Independent level scaling and automatic long-name truncation
 - Independent name and visible HP-number scaling
+- Build-independent Blizzard health-text discovery and direct font resizing
 - Direct BetterBlizzPlates scale/cache synchronization for working BNP name and HP controls
 - Dynamic HP-number width reservation prevents text overlap
 - Precisely aligned default markers on every slider

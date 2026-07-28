@@ -11,7 +11,8 @@ local CHANGELOG_TEXT = [=[|cff9d8cffV1.1|r
 
 |cffffd100Threat reliability and live updates|r
 • Increased the threat refresh rate to 0.1 seconds.
-• Prevented brief missing threat samples from flickering at low frame rates.
+• Bridges only one genuinely missing threat sample at low frame rates.
+• Explicit new values, including 0%, immediately replace stale cached 100%.
 • Fixed dynamic growth with visible full-frame scaling from the stable 0-100 threat percentage.
 • Dynamic maximum size can be freely set from 1.0 to 3.0.
 • Added Tiny Threat's blue cat icon to the Threat settings tab.
@@ -22,6 +23,8 @@ local CHANGELOG_TEXT = [=[|cff9d8cffV1.1|r
 • Added live nameplate and animated threat previews.
 • Added independent 0.5-2.0 level scaling with the original 1.0 size as default.
 • Added independent 0.5-2.0 size controls for names and visible HP numbers.
+• Name and detected Blizzard HP text now use direct font-size changes.
+• Added /bnp debug to report detected live HP text and font size.
 • BNP name and HP sizes now directly synchronize with BetterBlizzPlates and refresh its cache.
 • Long names reserve the measured HP-number width and end in ... without overlap.
 • Fixed repeated updates bypassing name truncation because of retained anchors.

@@ -206,6 +206,12 @@ local function CreateOverlay(plate, unitFrame)
         and unitFrame.name.GetScale
         and unitFrame.name:GetScale()
         or 1
+    if unitFrame.name and unitFrame.name.GetFont then
+        overlay.originalNameFont,
+        overlay.originalNameFontSize,
+        overlay.originalNameFontFlags = unitFrame.name:GetFont()
+    end
+    overlay.healthNumberFontBases = setmetatable({}, { __mode = "k" })
 
     overlay.threatFrame = CreateFrame("Frame", nil, plate, "BackdropTemplate")
     overlay.threatFrame:SetSize(48, 14)
@@ -262,10 +268,170 @@ local function RestoreBlizzardName(unitFrame, overlay)
     overlay.inlineLevel:Hide()
 end
 
-local function GetHealthNumbers(unitFrame)
-    return unitFrame.healthNumbers
-        or unitFrame.healthText
-        or unitFrame.HealthText
+local function IsFontString(region)
+    return region
+        and region.GetObjectType
+        and region:GetObjectType() == "FontString"
+end
+
+local function GetVisibleNumericText(region)
+    if not IsFontString(region)
+        or (region.IsForbidden and region:IsForbidden())
+        or not region.GetText
+    then
+        return nil
+    end
+
+    if region.IsShown and not region:IsShown() then
+        return nil
+    end
+
+    local ok, text = pcall(region.GetText, region)
+    if not ok or type(text) ~= "string" or not text:find("%d") then
+        return nil
+    end
+    return text
+end
+
+local function FindHealthNumbers(unitFrame, overlay)
+    local bestRegion
+    local bestScore = -1
+    local visited = {}
+    local currentHealth = UnitHealth
+        and unitFrame.unit
+        and tostring(UnitHealth(unitFrame.unit) or "")
+        or ""
+
+    local function Consider(region, bonus)
+        if not region
+            or visited[region]
+            or region == unitFrame.name
+            or region == overlay.inlineName
+            or region == overlay.inlineLevel
+            or region == overlay.threatText
+        then
+            return
+        end
+        visited[region] = true
+
+        local text = GetVisibleNumericText(region)
+        if not text then
+            return
+        end
+
+        local score = (bonus or 0) + #text
+        local digits = text:gsub("[^%d]", "")
+        local looksLikeHealth = false
+        if currentHealth ~= ""
+            and (text:find(currentHealth, 1, true)
+                or digits == currentHealth)
+        then
+            score = score + 500
+            looksLikeHealth = true
+        end
+        if text:find("/", 1, true) then
+            score = score + 30
+            looksLikeHealth = true
+        elseif text:find("%%") then
+            score = score + 15
+            looksLikeHealth = true
+        end
+        if region.GetName then
+            local name = region:GetName()
+            if name and string.lower(name):find("health", 1, true) then
+                score = score + 100
+                looksLikeHealth = true
+            end
+        end
+        if (bonus or 0) < 100 and not looksLikeHealth then
+            return
+        end
+
+        if score > bestScore then
+            bestRegion = region
+            bestScore = score
+        end
+    end
+
+    local healthBar = unitFrame.healthBar
+    local explicitCandidates = {
+        unitFrame.healthNumbers,
+        unitFrame.healthText,
+        unitFrame.HealthText,
+        unitFrame.healthValue,
+        unitFrame.HealthValue,
+        healthBar and healthBar.healthNumbers,
+        healthBar and healthBar.healthText,
+        healthBar and healthBar.HealthText,
+        healthBar and healthBar.TextString,
+        healthBar and healthBar.text,
+    }
+    for _, region in pairs(explicitCandidates) do
+        Consider(region, 1000)
+    end
+
+    local function ScanFrame(frame, depth, bonus)
+        if not frame or depth < 0 or visited[frame] then
+            return
+        end
+        visited[frame] = true
+
+        if frame.GetRegions then
+            for _, region in ipairs({ frame:GetRegions() }) do
+                Consider(region, bonus)
+            end
+        end
+        if depth > 0 and frame.GetChildren then
+            for _, child in ipairs({ frame:GetChildren() }) do
+                ScanFrame(child, depth - 1, bonus - 5)
+            end
+        end
+    end
+
+    ScanFrame(healthBar, 2, 200)
+    ScanFrame(unitFrame.HealthBarsContainer, 2, 150)
+    ScanFrame(unitFrame, 2, 10)
+    if bestRegion then
+        overlay.healthNumbersRegion = bestRegion
+    end
+    return bestRegion or overlay.healthNumbersRegion
+end
+
+local function ApplyHealthNumberFontScale(healthNumbers, overlay)
+    if not healthNumbers
+        or not healthNumbers.GetFont
+        or not healthNumbers.SetFont
+        or (healthNumbers.IsForbidden and healthNumbers:IsForbidden())
+    then
+        return
+    end
+
+    local base = overlay.healthNumberFontBases[healthNumbers]
+    if not base then
+        local font, size, flags = healthNumbers:GetFont()
+        if not font or not size then
+            return
+        end
+        base = {
+            font = font,
+            size = size,
+            flags = flags,
+            scale = healthNumbers.GetScale and healthNumbers:GetScale() or 1,
+        }
+        overlay.healthNumberFontBases[healthNumbers] = base
+    end
+
+    local scale = addon.db.enabled
+        and Clamp(addon.db.healthNumberScale, 0.5, 2.0)
+        or 1
+    if healthNumbers.SetScale then
+        healthNumbers:SetScale(addon.db.enabled and 1 or base.scale)
+    end
+    healthNumbers:SetFont(
+        base.font,
+        math.max(6, base.size * scale),
+        base.flags or ""
+    )
 end
 
 local function ApplyTextScales(unitFrame, overlay)
@@ -273,33 +439,31 @@ local function ApplyTextScales(unitFrame, overlay)
     local nameForbidden = nameText
         and nameText.IsForbidden
         and nameText:IsForbidden()
-    if nameText and nameText.SetScale and not nameForbidden then
+    if nameText and not nameForbidden then
         local scale = addon.db.enabled
             and Clamp(addon.db.nameScale, 0.5, 2.0)
-            or overlay.originalNameScale
-        nameText:SetScale(scale)
+            or 1
+        if nameText.SetScale then
+            nameText:SetScale(overlay.originalNameScale)
+        end
+        if nameText.SetFont
+            and overlay.originalNameFont
+            and overlay.originalNameFontSize
+        then
+            nameText:SetFont(
+                overlay.originalNameFont,
+                math.max(7, overlay.originalNameFontSize * scale),
+                overlay.originalNameFontFlags or ""
+            )
+        end
     end
 
-    local healthNumbers = GetHealthNumbers(unitFrame)
-    local healthForbidden = healthNumbers
-        and healthNumbers.IsForbidden
-        and healthNumbers:IsForbidden()
-    if healthNumbers and healthNumbers.SetScale and not healthForbidden then
-        if overlay.healthNumbersRegion ~= healthNumbers then
-            overlay.healthNumbersRegion = healthNumbers
-            overlay.originalHealthNumberScale = healthNumbers.GetScale
-                and healthNumbers:GetScale()
-                or 1
-        end
-        local scale = addon.db.enabled
-            and Clamp(addon.db.healthNumberScale, 0.5, 2.0)
-            or overlay.originalHealthNumberScale
-        healthNumbers:SetScale(scale)
-    end
+    local healthNumbers = FindHealthNumbers(unitFrame, overlay)
+    ApplyHealthNumberFontScale(healthNumbers, overlay)
 end
 
-local function GetHealthNumbersInset(unitFrame, barWidth)
-    local healthNumbers = GetHealthNumbers(unitFrame)
+local function GetHealthNumbersInset(unitFrame, overlay, barWidth)
+    local healthNumbers = FindHealthNumbers(unitFrame, overlay)
     if not healthNumbers
         or (healthNumbers.IsForbidden and healthNumbers:IsForbidden())
         or not healthNumbers.IsShown
@@ -323,7 +487,7 @@ local function GetHealthNumbersInset(unitFrame, barWidth)
         end
     end
 
-    local visualScale = Clamp(addon.db.healthNumberScale, 0.5, 2.0)
+    local visualScale = 1
     if healthNumbers.GetEffectiveScale
         and unitFrame.healthBar.GetEffectiveScale
     then
@@ -346,7 +510,9 @@ local function GetHealthNumbersInset(unitFrame, barWidth)
     end
 
     local measuredInset = math.ceil((textWidth * visualScale) + 12)
-    local safeInset = math.ceil((48 * visualScale) + 6)
+    local safeInset = math.ceil(
+        (48 * Clamp(addon.db.healthNumberScale, 0.5, 2.0)) + 6
+    )
     return math.min(barWidth * 0.55, math.max(measuredInset, safeInset))
 end
 
@@ -528,15 +694,10 @@ local function UpdateLevel(unit, unitFrame, overlay)
     end
 
     local nameR, nameG, nameB = 1, 1, 1
-    local nameFont = STANDARD_TEXT_FONT
-    local nameSize = 11
+    local nameFont = overlay.originalNameFont or STANDARD_TEXT_FONT
+    local nameSize = overlay.originalNameFontSize or 11
     local nameForbidden = nameText and nameText.IsForbidden and nameText:IsForbidden()
     if nameText and not nameForbidden then
-        local font, size = nameText:GetFont()
-        if font and size then
-            nameFont = font
-            nameSize = size
-        end
         nameR, nameG, nameB = nameText:GetTextColor()
 
         if not overlay.nameHidden then
@@ -568,7 +729,7 @@ local function UpdateLevel(unit, unitFrame, overlay)
     if not barWidth or barWidth <= 0 then
         barWidth = 120
     end
-    local rightInset = GetHealthNumbersInset(unitFrame, barWidth)
+    local rightInset = GetHealthNumbersInset(unitFrame, overlay, barWidth)
     local levelWidth = math.ceil(inlineLevel:GetStringWidth())
     local gap = 4
     local nameWidth = math.max(0, barWidth - 5 - rightInset - levelWidth - gap)
@@ -610,7 +771,7 @@ local function IsEnemyUnit(unit)
         and UnitCanAttack("player", unit)
 end
 
-local THREAT_CACHE_GRACE = 0.35
+local THREAT_CACHE_GRACE = 0.11
 
 local function GetThreatData(unit)
     if not IsEnemyUnit(unit) then
@@ -625,17 +786,22 @@ local function GetThreatData(unit)
     local percentage = tonumber(scaledPercentage) or tonumber(rawPercentage)
     local cached = guid and addon.threatCache[guid]
 
-    if percentage == nil
-        or (percentage <= 0
-            and inCombat
+    if status == nil and UnitThreatSituation then
+        status = UnitThreatSituation("player", unit)
+    end
+
+    if percentage == nil then
+        if status ~= nil then
+            -- A current status is authoritative. Never keep an old 100% after
+            -- aggro has already dropped below the tanking states.
+            percentage = status >= 2 and 100 or 0
+        elseif inCombat
             and cached
-            and cached.percentage > 0
-            and now - cached.updatedAt <= THREAT_CACHE_GRACE)
-    then
-        if inCombat
-            and cached
+            and cached.percentage < 100
             and now - cached.updatedAt <= THREAT_CACHE_GRACE
         then
+            -- Bridge only one genuinely missing API sample. Explicit zeroes
+            -- and stale tanking values are never replaced by cached data.
             percentage = cached.percentage
             status = cached.status
         else
@@ -644,12 +810,16 @@ local function GetThreatData(unit)
     end
 
     percentage = Clamp(percentage, 0, 100)
-    if guid and percentage > 0 then
-        addon.threatCache[guid] = {
-            percentage = percentage,
-            status = status,
-            updatedAt = now,
-        }
+    if guid then
+        if percentage > 0 then
+            addon.threatCache[guid] = {
+                percentage = percentage,
+                status = status,
+                updatedAt = now,
+            }
+        else
+            addon.threatCache[guid] = nil
+        end
     end
 
     if addon.db.threatCombatOnly
@@ -1283,6 +1453,41 @@ SlashCmdList.BETTERNAMEPLATES = function(message)
         if addon.RequestReset then
             addon:RequestReset()
         end
+    elseif command == "debug" then
+        Print(string.format(
+            "nameScale=%.1f, healthNumberScale=%.1f",
+            addon.db.nameScale,
+            addon.db.healthNumberScale
+        ))
+        local detected = 0
+        if C_NamePlate and C_NamePlate.GetNamePlates then
+            for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
+                local unitFrame = plate.UnitFrame
+                local unit = GetPlateUnit(plate)
+                if unitFrame and unitFrame.healthBar and unit then
+                    local overlay = CreateOverlay(plate, unitFrame)
+                    local healthNumbers = FindHealthNumbers(unitFrame, overlay)
+                    if healthNumbers then
+                        local text = healthNumbers.GetText
+                            and healthNumbers:GetText()
+                            or "?"
+                        local size = 0
+                        if healthNumbers.GetFont then
+                            local _, fontSize = healthNumbers:GetFont()
+                            size = tonumber(fontSize) or 0
+                        end
+                        detected = detected + 1
+                        Print(string.format(
+                            "%s: HP='%s', font=%.1f",
+                            unit,
+                            tostring(text),
+                            size
+                        ))
+                    end
+                end
+            end
+        end
+        Print("Detected HP texts: " .. detected)
     else
         Print(L.HELP_OPEN)
         Print(L.HELP_SCALE)
