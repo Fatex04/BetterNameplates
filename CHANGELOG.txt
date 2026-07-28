@@ -5,6 +5,48 @@ Discord
 -------
 https://discord.gg/ZfYDHV6Qgs
 
+V1.1
+----
+
+Threat reliability and live updates
+- Increased the threat refresh rate from 0.2 to 0.1 seconds.
+- Reduced the low-FPS cache grace period to 0.11 seconds.
+- Cached threat is now used only for one genuinely missing API sample.
+- Explicit new values, including 0%, immediately replace the cache so a stale 100% cannot linger after aggro changes.
+- Switched dynamic growth to visible full-frame scaling from the stable 0-100 threat percentage.
+- Dynamic maximum size can be freely set from 1.0 to 3.0 without snapping upward.
+- Added Tiny Threat's blue Ability_Druid_Cower cat icon to the Threat settings tab.
+
+Controls and previews
+- Nameplate features can now be disabled without disabling threat.
+- Added a separate nameplate scaling switch.
+- Added live nameplate and animated threat previews to the settings.
+- Added a live-preview checkbox for both preview areas.
+- Added independent level scaling from 0.5 to 2.0; 1.0 preserves the original size.
+- Added independent 0.5 to 2.0 controls for unit-name and visible HP-number size.
+- Name scaling now changes the actual font size instead of relying on region scale.
+- HP text is discovered across Blizzard's different Classic/Modern health-bar frame layouts.
+- Numeric HP FontStrings are resized directly, including builds without BetterBlizzPlates.
+- Added /bnp debug to report the configured scales and detected live HP FontStrings.
+- Fixed BetterBlizzPlates overwriting BNP's name and HP-number size after its own updates.
+- BNP now synchronizes its sliders with BetterBlizzPlates' HP, enemy-name, and friendly-name scale settings.
+- BetterBlizzPlates' cached nameplate configuration is refreshed immediately after either BNP slider changes.
+- Long unit names now end in ... and reserve the measured width of visible HP numbers.
+- Fixed repeated name updates bypassing truncation because of retained font-string anchors.
+- Added a gold default marker aligned exactly with the slider thumb positions and a default-value label to every slider.
+- Nameplate and threat previews now use the configured nameplate size and proportions.
+- The nameplate preview also mirrors name, level, and HP-number sizes.
+- The settings window can now be resized from the bottom-right corner and remembers its size and position.
+- The Changelog layout now follows the resized window width.
+- Reset now requires confirmation, including /bnp reset.
+
+Classic level display
+- Enemy and neutral level colors now use Blizzard's Classic difficulty-color API.
+- Gray, green, yellow, orange, and red levels now follow the same thresholds as the default UI.
+- Removed the incorrect custom rule that always showed a skull at ten levels above the player.
+- A skull is now shown only for attackable bosses or enemies whose level Blizzard reports as unknown.
+- Friendly units never show a skull and use their numeric/effective level with Blizzard's non-attackable color.
+
 V1.0 - Initial Release
 ----------------------
 
@@ -21,7 +63,7 @@ Unit levels
 - Added left and right placement beside the unit name.
 - Added [35], lvl. 35, and plain 35 formats.
 - Added gray, green, yellow, and red difficulty colors.
-- Added a larger skull indicator for units at least 10 levels above the player.
+- Added a larger skull indicator for enemies with an unknown level.
 
 Threat percentage
 - Added threat percentages to visible enemy nameplates.

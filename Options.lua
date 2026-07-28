@@ -3,9 +3,45 @@ local L = addon.L
 
 local ADDON_ICON = "Interface\\AddOns\\BetterNameplates\\assets\\bnp_logo.tga"
 local DISCORD_ICON = "Interface\\AddOns\\BetterNameplates\\assets\\discord_icon.tga"
+local THREAT_TAB_ICON = "Interface\\Icons\\Ability_Druid_Cower"
 local DISCORD_URL = "https://discord.gg/ZfYDHV6Qgs"
 local DISCORD_DIALOG_KEY = "BETTERNAMEPLATES_DISCORD_LINK"
-local CHANGELOG_TEXT = [=[|cff9d8cffV1.0 - Initial Release|r
+local RESET_DIALOG_KEY = "BETTERNAMEPLATES_RESET_CONFIRM"
+local CHANGELOG_TEXT = [=[|cff9d8cffV1.1|r
+
+|cffffd100Threat reliability and live updates|r
+• Increased the threat refresh rate to 0.1 seconds.
+• Bridges only one genuinely missing threat sample at low frame rates.
+• Explicit new values, including 0%, immediately replace stale cached 100%.
+• Fixed dynamic growth with visible full-frame scaling from the stable 0-100 threat percentage.
+• Dynamic maximum size can be freely set from 1.0 to 3.0.
+• Added Tiny Threat's blue cat icon to the Threat settings tab.
+
+|cffffd100Controls and previews|r
+• Nameplate features can now be disabled while threat remains active.
+• Added separate scaling, level, threat, minimap, and live-preview switches.
+• Added live nameplate and animated threat previews.
+• Added independent 0.5-2.0 level scaling with the original 1.0 size as default.
+• Added independent 0.5-2.0 size controls for names and visible HP numbers.
+• Name and detected Blizzard HP text now use direct font-size changes.
+• Added /bnp debug to report detected live HP text and font size.
+• BNP name and HP sizes now directly synchronize with BetterBlizzPlates and refresh its cache.
+• Long names reserve the measured HP-number width and end in ... without overlap.
+• Fixed repeated updates bypassing name truncation because of retained anchors.
+• All sliders show their original default with a precisely aligned gold marker.
+• Both previews now mirror the configured nameplate size and proportions.
+• The nameplate preview also mirrors name, level, and HP-number sizes.
+• The settings window can be resized from the bottom-right corner and remembers its layout.
+• Reset now requires confirmation.
+
+|cffffd100Classic level display|r
+• Enemy and neutral levels now use Blizzard's Classic difficulty colors.
+• Gray, green, yellow, orange, and red thresholds now match the default UI.
+• Removed the incorrect custom skull rule for enemies ten levels above the player.
+• A skull appears only for attackable bosses or enemies with a Blizzard-hidden level.
+• Friendly units never show a skull and use their available numeric/effective level.
+
+|cff9d8cffV1.0 - Initial Release|r
 
 |cffffd100Modern Nameplates extension|r
 • Extends Blizzard's Modern nameplates in WoW Classic Era without replacing them.
@@ -20,7 +56,7 @@ local CHANGELOG_TEXT = [=[|cff9d8cffV1.0 - Initial Release|r
 • Added left and right placement beside the unit name.
 • Added [35], lvl. 35, and plain 35 formats.
 • Added gray, green, yellow, and red difficulty colors.
-• Added a larger skull indicator for units at least 10 levels above the player.
+• Added a larger skull indicator for enemies with an unknown level.
 
 |cffffd100Threat percentage|r
 • Added threat percentages to visible enemy nameplates.
@@ -43,6 +79,10 @@ local CHANGELOG_TEXT = [=[|cff9d8cffV1.0 - Initial Release|r
 
 local controls = {}
 local refreshing = false
+local previewState = {
+    threatPercentage = 0,
+    threatElapsed = 0,
+}
 
 local function SetLabel(control, text)
     if control.Text then
@@ -71,7 +111,19 @@ local function CreateCheckBox(parent, name, text, x, y, onClick)
     return check
 end
 
-local function CreateSlider(parent, name, label, minimum, maximum, step, x, y, width, onValueChanged)
+local function CreateSlider(
+    parent,
+    name,
+    label,
+    minimum,
+    maximum,
+    step,
+    x,
+    y,
+    width,
+    defaultValue,
+    onValueChanged
+)
     local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
     slider:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     slider:SetWidth(width)
@@ -81,6 +133,46 @@ local function CreateSlider(parent, name, label, minimum, maximum, step, x, y, w
 
     _G[name .. "Low"]:SetText(tostring(minimum))
     _G[name .. "High"]:SetText(tostring(maximum))
+
+    local defaultRounded = addon.RoundToStep(
+        addon.Clamp(defaultValue, minimum, maximum),
+        step
+    )
+    slider.defaultSlider = CreateFrame("Slider", nil, slider)
+    slider.defaultSlider:SetAllPoints(slider)
+    slider.defaultSlider:SetOrientation("HORIZONTAL")
+    slider.defaultSlider:SetMinMaxValues(minimum, maximum)
+    slider.defaultSlider:SetValueStep(step)
+    slider.defaultSlider:SetValue(defaultRounded)
+    slider.defaultSlider:EnableMouse(false)
+    slider.defaultSlider:SetFrameLevel(slider:GetFrameLevel() + 5)
+
+    local activeThumb = slider:GetThumbTexture()
+    local thumbWidth = activeThumb and activeThumb:GetWidth() or 16
+    local thumbHeight = activeThumb and activeThumb:GetHeight() or 16
+    if not thumbWidth or thumbWidth <= 0 then
+        thumbWidth = 16
+    end
+    if not thumbHeight or thumbHeight <= 0 then
+        thumbHeight = 16
+    end
+
+    slider.defaultThumb = slider.defaultSlider:CreateTexture(nil, "ARTWORK")
+    slider.defaultThumb:SetSize(thumbWidth, thumbHeight)
+    slider.defaultThumb:SetColorTexture(1, 1, 1, 0)
+    slider.defaultSlider:SetThumbTexture(slider.defaultThumb)
+
+    slider.defaultMarker = slider:CreateTexture(nil, "OVERLAY")
+    slider.defaultMarker:SetSize(2, 14)
+    slider.defaultMarker:SetColorTexture(1, 0.82, 0, 0.95)
+    slider.defaultMarker:SetPoint("CENTER", slider.defaultThumb, "CENTER", 0, 0)
+
+    local defaultFormat = step < 1 and "%.1f" or "%.0f"
+    slider.defaultText = parent:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    slider.defaultText:SetPoint("TOP", slider, "BOTTOM", 0, -13)
+    slider.defaultText:SetText(
+        string.format(L.DEFAULT_VALUE, string.format(defaultFormat, defaultRounded))
+    )
 
     slider:SetScript("OnValueChanged", function(self, value)
         local rounded = addon.RoundToStep(value, step)
@@ -92,6 +184,21 @@ local function CreateSlider(parent, name, label, minimum, maximum, step, x, y, w
     end)
 
     return slider
+end
+
+local function CreatePreviewBox(parent, x, y, height)
+    local preview = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    preview:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    preview:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -x, y)
+    preview:SetHeight(height)
+    preview:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    preview:SetBackdropColor(0.008, 0.015, 0.025, 0.96)
+    preview:SetBackdropBorderColor(0.14, 0.34, 0.5, 1)
+    return preview
 end
 
 local function EnsureDiscordDialog()
@@ -133,6 +240,186 @@ local function ShowDiscordLink()
     end
 end
 
+local function EnsureResetDialog()
+    if not StaticPopupDialogs or StaticPopupDialogs[RESET_DIALOG_KEY] then
+        return
+    end
+
+    StaticPopupDialogs[RESET_DIALOG_KEY] = {
+        text = L.RESET_CONFIRM,
+        button1 = L.RESET,
+        button2 = L.CANCEL_BUTTON,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+        OnAccept = function()
+            addon:ResetDatabase()
+            addon:Print(L.SETTINGS_RESET)
+        end,
+    }
+end
+
+function addon:RequestReset()
+    EnsureResetDialog()
+    if StaticPopup_Show and StaticPopupDialogs and StaticPopupDialogs[RESET_DIALOG_KEY] then
+        StaticPopup_Show(RESET_DIALOG_KEY)
+    end
+end
+
+local function FormatPreviewLevel()
+    if not addon.db.enabled or not addon.db.showLevel then
+        return nil
+    end
+
+    local level = "35"
+    if addon.db.levelFormat == "BRACKETS" then
+        level = "[" .. level .. "]"
+    elseif addon.db.levelFormat == "PREFIX" then
+        level = L.LEVEL_PREFIX .. " " .. level
+    end
+    if addon.db.levelColorByDifficulty then
+        level = "|cffffd100" .. level .. "|r"
+    end
+    return level
+end
+
+local function GetPreviewNameplateDimensions()
+    local scale = addon.db.enabled and addon.db.scaleEnabled
+        and addon.db.nameplateScale
+        or 1.0
+    local horizontalScale = addon.GetNameplateHorizontalScale(scale)
+    local width = math.floor((210 * scale * horizontalScale) + 0.5)
+    local height = math.floor((24 * scale) + 0.5)
+    return scale, width, height
+end
+
+local function UpdateNameplatePreview(force)
+    local preview = controls.nameplatePreview
+    if not preview or not addon.db then
+        return
+    end
+    if not force
+        and controls.nameplateLivePreview
+        and not controls.nameplateLivePreview:GetChecked()
+    then
+        return
+    end
+
+    local scale, width, height = GetPreviewNameplateDimensions()
+    preview.healthBar:SetSize(width, height)
+    preview.healthBar:SetValue(72)
+    preview.name:SetFont(
+        STANDARD_TEXT_FONT,
+        math.max(
+            7,
+            math.floor((11 * scale * addon.db.nameScale) + 0.5)
+        ),
+        "OUTLINE"
+    )
+    preview.healthNumbers:SetFont(
+        STANDARD_TEXT_FONT,
+        math.max(
+            7,
+            math.floor((9 * scale * addon.db.healthNumberScale) + 0.5)
+        ),
+        "OUTLINE"
+    )
+    preview.healthNumbers:SetText("1212")
+    preview.healthNumbers:ClearAllPoints()
+    preview.healthNumbers:SetPoint("RIGHT", preview.healthBar, "RIGHT", -5, 0)
+    local healthInset = math.ceil(preview.healthNumbers:GetStringWidth()) + 13
+
+    local level = FormatPreviewLevel()
+    preview.name:ClearAllPoints()
+    preview.level:ClearAllPoints()
+    if level and addon.db.showEnemyLevel then
+        preview.level:SetFont(
+            STANDARD_TEXT_FONT,
+            math.max(
+                7,
+                math.floor((11 * scale * addon.db.levelScale) + 0.5)
+            ),
+            "OUTLINE"
+        )
+        preview.level:SetWidth(0)
+        preview.level:SetText(level)
+        local levelWidth = math.ceil(preview.level:GetStringWidth())
+        local nameWidth = math.max(
+            0,
+            width - levelWidth - healthInset - 13
+        )
+        local truncatedName = addon.TruncateToWidth(
+            preview.name,
+            L.PREVIEW_UNIT_NAME,
+            nameWidth
+        )
+
+        if addon.db.levelSide == "LEFT" then
+            preview.level:SetPoint("LEFT", preview.healthBar, "LEFT", 5, 0)
+            preview.name:SetPoint("LEFT", preview.level, "RIGHT", 4, 0)
+            preview.name:SetPoint("RIGHT", preview.healthNumbers, "LEFT", -4, 0)
+        else
+            preview.level:SetPoint("RIGHT", preview.healthNumbers, "LEFT", -4, 0)
+            preview.name:SetPoint("LEFT", preview.healthBar, "LEFT", 5, 0)
+            preview.name:SetPoint("RIGHT", preview.level, "LEFT", -4, 0)
+        end
+        preview.name:SetJustifyH("LEFT")
+        preview.name:SetText(truncatedName)
+        preview.level:Show()
+    else
+        preview.name:SetPoint("LEFT", preview.healthBar, "LEFT", 5, 0)
+        preview.name:SetPoint("RIGHT", preview.healthNumbers, "LEFT", -4, 0)
+        preview.name:SetJustifyH("CENTER")
+        preview.name:SetText(
+            addon.TruncateToWidth(
+                preview.name,
+                L.PREVIEW_UNIT_NAME,
+                width - healthInset - 9
+            )
+        )
+        preview.level:Hide()
+    end
+    preview.scaleText:SetText(string.format(L.PREVIEW_SCALE, scale))
+end
+
+local function UpdateThreatPreview()
+    local preview = controls.threatPreview
+    if not preview or not addon.db then
+        return
+    end
+
+    local scale, width, height = GetPreviewNameplateDimensions()
+    preview.healthBar:SetSize(width, height)
+    preview.name:SetFont(
+        STANDARD_TEXT_FONT,
+        math.max(8, math.floor((11 * scale) + 0.5)),
+        "OUTLINE"
+    )
+    preview.name:SetText(
+        addon.TruncateToWidth(preview.name, L.PREVIEW_ENEMY_NAME, width - 10)
+    )
+
+    local percentage = previewState.threatPercentage
+    local offset = math.floor(
+        (addon.Clamp(addon.db.threatOffset, -40, 40) * scale) + 0.5
+    )
+    addon.SetThreatPosition(
+        preview.threatFrame,
+        preview.unitFrame,
+        addon.db.threatPosition,
+        offset
+    )
+    addon.ApplyThreatAppearance(preview.threatFrame, preview.threatText, percentage)
+    preview.threatFrame:SetScale(addon.GetThreatVisualSize(percentage) * scale)
+    preview.threatFrame:SetShown(addon.db.showThreat)
+    preview.disabledText:SetShown(not addon.db.showThreat)
+end
+
+function addon:UpdateOptionsPreviews(force)
+    UpdateNameplatePreview(force)
+    UpdateThreatPreview()
+end
+
 local function CreateSideDropdown(parent, x, y)
     local dropdown = CreateFrame("Frame", "BetterNameplatesLevelSideDropdown", parent, "UIDropDownMenuTemplate")
     dropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
@@ -153,6 +440,7 @@ local function CreateSideDropdown(parent, x, y)
                 UIDropDownMenu_SetSelectedValue(dropdown, value)
                 UIDropDownMenu_SetText(dropdown, text)
                 addon:ApplyAll()
+                addon:UpdateOptionsPreviews()
             end
             UIDropDownMenu_AddButton(info)
         end
@@ -184,6 +472,7 @@ local function CreateFormatDropdown(parent, x, y)
                 UIDropDownMenu_SetSelectedValue(dropdown, value)
                 UIDropDownMenu_SetText(dropdown, text)
                 addon:ApplyAll()
+                addon:UpdateOptionsPreviews()
             end
             UIDropDownMenu_AddButton(info)
         end
@@ -216,6 +505,7 @@ local function CreateThreatModeDropdown(parent, x, y)
                 UIDropDownMenu_SetSelectedValue(dropdown, value)
                 UIDropDownMenu_SetText(dropdown, text)
                 addon:UpdateThreatDisplays()
+                addon:UpdateOptionsPreviews()
             end
             UIDropDownMenu_AddButton(info)
         end
@@ -247,6 +537,7 @@ local function CreateThreatPositionDropdown(parent, x, y)
                 UIDropDownMenu_SetSelectedValue(dropdown, value)
                 UIDropDownMenu_SetText(dropdown, text)
                 addon:UpdateThreatDisplays()
+                addon:UpdateOptionsPreviews()
             end
             UIDropDownMenu_AddButton(info)
         end
@@ -262,18 +553,81 @@ local function CreateThreatPositionDropdown(parent, x, y)
     return dropdown
 end
 
+local function NormalizeWindowTopLeft(window)
+    local left = window:GetLeft()
+    local top = window:GetTop()
+    if not left or not top then
+        return nil, nil
+    end
+
+    left = math.floor(left + 0.5)
+    top = math.floor(top + 0.5)
+    window:ClearAllPoints()
+    window:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    return left, top
+end
+
 local function CreateWindow()
     local window = CreateFrame("Frame", "BetterNameplatesWindow", UIParent, "BackdropTemplate")
-    window:SetSize(720, 530)
-    window:SetPoint("CENTER")
+    local parentWidth = UIParent:GetWidth() or 1920
+    local parentHeight = UIParent:GetHeight() or 1080
+    local maximumWidth = math.max(720, parentWidth - 20)
+    local maximumHeight = math.max(650, parentHeight - 20)
+    local savedWidth = addon.Clamp(addon.db.optionsWindowWidth, 720, maximumWidth)
+    local savedHeight = addon.Clamp(addon.db.optionsWindowHeight, 650, maximumHeight)
+
+    window:SetSize(math.floor(savedWidth + 0.5), math.floor(savedHeight + 0.5))
+    if addon.db.optionsWindowX and addon.db.optionsWindowY then
+        window:SetPoint(
+            "TOPLEFT",
+            UIParent,
+            "BOTTOMLEFT",
+            addon.db.optionsWindowX,
+            addon.db.optionsWindowY
+        )
+    else
+        window:SetPoint("CENTER")
+    end
     window:SetFrameStrata("DIALOG")
     window:SetToplevel(true)
     window:SetClampedToScreen(true)
     window:SetMovable(true)
+    window:SetResizable(true)
+    local function UpdateResizeBounds()
+        local currentParentWidth = UIParent:GetWidth() or 1920
+        local currentParentHeight = UIParent:GetHeight() or 1080
+        window.maxResizeWidth = math.max(720, currentParentWidth - 20)
+        window.maxResizeHeight = math.max(650, currentParentHeight - 20)
+        if window.SetResizeBounds then
+            window:SetResizeBounds(
+                720,
+                650,
+                window.maxResizeWidth,
+                window.maxResizeHeight
+            )
+        elseif window.SetMinResize then
+            window:SetMinResize(720, 650)
+            if window.SetMaxResize then
+                window:SetMaxResize(
+                    window.maxResizeWidth,
+                    window.maxResizeHeight
+                )
+            end
+        end
+    end
+    window.UpdateResizeBounds = UpdateResizeBounds
+    UpdateResizeBounds()
     window:EnableMouse(true)
     window:RegisterForDrag("LeftButton")
-    window:SetScript("OnDragStart", window.StartMoving)
-    window:SetScript("OnDragStop", window.StopMovingOrSizing)
+    window:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+    end)
+    window:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local left, top = NormalizeWindowTopLeft(self)
+        addon.db.optionsWindowX = left
+        addon.db.optionsWindowY = top
+    end)
     window:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -294,6 +648,43 @@ local function CreateWindow()
         window:Hide()
     end)
 
+    local resize = CreateFrame("Button", nil, window)
+    resize:SetSize(18, 18)
+    resize:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -5, 5)
+    resize:SetFrameLevel(window:GetFrameLevel() + 10)
+    resize.texture = resize:CreateTexture(nil, "ARTWORK")
+    resize.texture:SetAllPoints()
+    resize.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resize:SetScript("OnEnter", function(self)
+        self.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    end)
+    resize:SetScript("OnLeave", function(self)
+        self.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    end)
+    resize:SetScript("OnMouseDown", function()
+        NormalizeWindowTopLeft(window)
+        window:StartSizing("BOTTOMRIGHT")
+    end)
+    resize:SetScript("OnMouseUp", function()
+        window:StopMovingOrSizing()
+        local width = math.min(
+            window.maxResizeWidth,
+            math.floor(window:GetWidth() + 0.5)
+        )
+        local height = math.min(
+            window.maxResizeHeight,
+            math.floor(window:GetHeight() + 0.5)
+        )
+        window:SetSize(width, height)
+        addon.db.optionsWindowWidth = width
+        addon.db.optionsWindowHeight = height
+        local left, top = NormalizeWindowTopLeft(window)
+        addon.db.optionsWindowX = left
+        addon.db.optionsWindowY = top
+        addon:UpdateOptionsPreviews(true)
+    end)
+    window.resizeButton = resize
+
     local logo = window:CreateTexture(nil, "ARTWORK")
     logo:SetPoint("TOPLEFT", window, "TOPLEFT", 22, -15)
     logo:SetSize(46, 46)
@@ -302,7 +693,7 @@ local function CreateWindow()
 
     local title = window:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 10, -5)
-    title:SetText("BetterNameplates |cff9d8cffV1.0|r")
+    title:SetText("BetterNameplates |cff9d8cffV1.1|r")
 
     local subtitle = window:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
@@ -317,6 +708,24 @@ local function CreateWindow()
     divider:SetHeight(1)
 
     return window
+end
+
+function addon:ResetOptionsWindowLayout()
+    self.db.optionsWindowWidth = self.defaults.optionsWindowWidth
+    self.db.optionsWindowHeight = self.defaults.optionsWindowHeight
+    self.db.optionsWindowX = nil
+    self.db.optionsWindowY = nil
+
+    if self.optionsWindow then
+        self.optionsWindow:StopMovingOrSizing()
+        self.optionsWindow:SetSize(
+            self.defaults.optionsWindowWidth,
+            self.defaults.optionsWindowHeight
+        )
+        self.optionsWindow:ClearAllPoints()
+        self.optionsWindow:SetPoint("CENTER")
+        self:UpdateOptionsPreviews(true)
+    end
 end
 
 local function CreateTabSystem(window)
@@ -357,7 +766,7 @@ local function CreateTabSystem(window)
         {
             key = "THREAT",
             label = L.TAB_THREAT,
-            icon = "Interface\\Icons\\Ability_Warrior_DefensiveStance",
+            icon = THREAT_TAB_ICON,
         },
         {
             key = "CHANGELOG",
@@ -441,6 +850,123 @@ local function CreateTabSystem(window)
     return panels
 end
 
+local function CreateNameplatePreview(panel)
+    CreateSectionTitle(panel, L.PREVIEW, 10, -350)
+    controls.nameplateLivePreview = CreateCheckBox(
+        panel,
+        "BetterNameplatesNameplateLivePreviewCheck",
+        L.LIVE_PREVIEW,
+        330,
+        -350,
+        function(value)
+            if value then
+                UpdateNameplatePreview(true)
+            end
+        end
+    )
+    controls.nameplateLivePreview:SetChecked(true)
+
+    local preview = CreatePreviewBox(panel, 10, -385, 100)
+    controls.nameplatePreview = preview
+
+    preview.healthBar = CreateFrame("StatusBar", nil, preview, "BackdropTemplate")
+    preview.healthBar:SetPoint("CENTER", preview, "CENTER", 0, 4)
+    preview.healthBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    preview.healthBar:SetStatusBarColor(0.08, 0.63, 0.18, 1)
+    preview.healthBar:SetMinMaxValues(0, 100)
+    preview.healthBar:SetValue(72)
+    preview.healthBar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    preview.healthBar:SetBackdropColor(0.025, 0.06, 0.025, 1)
+    preview.healthBar:SetBackdropBorderColor(0, 0, 0, 1)
+
+    preview.name = preview.healthBar:CreateFontString(nil, "OVERLAY")
+    preview.name:SetPoint("CENTER")
+    preview.name:SetTextColor(1, 1, 1, 1)
+    preview.name:SetShadowOffset(1, -1)
+    preview.name:SetShadowColor(0, 0, 0, 1)
+
+    preview.level = preview.healthBar:CreateFontString(nil, "OVERLAY")
+    preview.level:SetShadowOffset(1, -1)
+    preview.level:SetShadowColor(0, 0, 0, 1)
+    preview.level:SetWordWrap(false)
+    preview.level:SetMaxLines(1)
+
+    preview.healthNumbers = preview.healthBar:CreateFontString(nil, "OVERLAY")
+    preview.healthNumbers:SetTextColor(1, 1, 1, 1)
+    preview.healthNumbers:SetShadowOffset(1, -1)
+    preview.healthNumbers:SetShadowColor(0, 0, 0, 1)
+    preview.healthNumbers:SetWordWrap(false)
+    preview.healthNumbers:SetMaxLines(1)
+
+    preview.scaleText = preview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    preview.scaleText:SetPoint("BOTTOM", preview, "BOTTOM", 0, 9)
+end
+
+local function CreateThreatPreview(panel)
+    CreateSectionTitle(panel, L.PREVIEW, 10, -380)
+    controls.threatLivePreview = CreateCheckBox(
+        panel,
+        "BetterNameplatesThreatLivePreviewCheck",
+        L.LIVE_PREVIEW,
+        330,
+        -380,
+        function(value)
+            if value then
+                previewState.threatPercentage = 0
+                previewState.threatElapsed = 0
+                UpdateThreatPreview()
+            end
+        end
+    )
+    controls.threatLivePreview:SetChecked(true)
+
+    local preview = CreatePreviewBox(panel, 10, -415, 83)
+    controls.threatPreview = preview
+
+    preview.healthBar = CreateFrame("StatusBar", nil, preview, "BackdropTemplate")
+    preview.healthBar:SetPoint("CENTER", preview, "CENTER", 0, -1)
+    preview.healthBar:SetSize(270, 22)
+    preview.healthBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    preview.healthBar:SetStatusBarColor(0.62, 0.08, 0.08, 1)
+    preview.healthBar:SetMinMaxValues(0, 100)
+    preview.healthBar:SetValue(82)
+    preview.healthBar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    preview.healthBar:SetBackdropColor(0.06, 0.015, 0.015, 1)
+    preview.healthBar:SetBackdropBorderColor(0, 0, 0, 1)
+
+    preview.name = preview.healthBar:CreateFontString(nil, "OVERLAY")
+    preview.name:SetPoint("CENTER")
+    preview.name:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+    preview.name:SetText(L.PREVIEW_ENEMY_NAME)
+
+    preview.unitFrame = { healthBar = preview.healthBar }
+    preview.threatFrame = CreateFrame("Frame", nil, preview, "BackdropTemplate")
+    preview.threatFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    preview.threatFrame:SetFrameLevel(preview.healthBar:GetFrameLevel() + 5)
+
+    preview.threatText = preview.threatFrame:CreateFontString(nil, "OVERLAY")
+    preview.threatText:SetPoint("CENTER")
+    preview.threatText:SetShadowOffset(1, -1)
+    preview.threatText:SetShadowColor(0, 0, 0, 1)
+
+    preview.disabledText = preview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    preview.disabledText:SetPoint("TOP", preview.healthBar, "BOTTOM", 0, -7)
+    preview.disabledText:SetText(L.PREVIEW_DISABLED)
+    preview.disabledText:Hide()
+end
+
 local function CreateChangelogPanel(panel)
     CreateSectionTitle(panel, L.DISCORD_COMMUNITY, 10, -10)
 
@@ -503,7 +1029,15 @@ local function CreateChangelogPanel(panel)
     body:SetSpacing(3)
     body:SetText(CHANGELOG_TEXT)
 
-    content:SetHeight(math.max(1, body:GetStringHeight() + 18))
+    local function UpdateChangelogLayout(_, width)
+        local contentWidth = math.max(1, (width or scroll:GetWidth() or 434) - 4)
+        content:SetWidth(contentWidth)
+        body:SetWidth(contentWidth)
+        content:SetHeight(math.max(1, body:GetStringHeight() + 18))
+    end
+
+    scroll:SetScript("OnSizeChanged", UpdateChangelogLayout)
+    UpdateChangelogLayout(scroll, scroll:GetWidth())
 end
 
 function addon:RefreshOptions()
@@ -514,7 +1048,11 @@ function addon:RefreshOptions()
     refreshing = true
 
     controls.enabled:SetChecked(self.db.enabled)
+    controls.scaleEnabled:SetChecked(self.db.scaleEnabled)
     controls.scale:SetValue(self.db.nameplateScale)
+    controls.nameScale:SetValue(self.db.nameScale)
+    controls.healthNumberScale:SetValue(self.db.healthNumberScale)
+    controls.levelScale:SetValue(self.db.levelScale)
     controls.showLevel:SetChecked(self.db.showLevel)
     controls.showEnemyLevel:SetChecked(self.db.showEnemyLevel)
     controls.showFriendlyLevel:SetChecked(self.db.showFriendlyLevel)
@@ -562,6 +1100,7 @@ function addon:RefreshOptions()
     controls.showMinimapButton:SetChecked(self.db.showMinimapButton)
 
     refreshing = false
+    self:UpdateOptionsPreviews()
 end
 
 function addon:CreateOptions()
@@ -585,7 +1124,24 @@ function addon:CreateOptions()
         -16,
         function(value)
             self.db.enabled = value
+            self:SyncBetterBlizzPlatesTextScales(true)
+            self:ApplyNameplateScale()
             self:ApplyAll()
+            self:UpdateOptionsPreviews()
+        end
+    )
+
+    controls.scaleEnabled = CreateCheckBox(
+        generalPanel,
+        "BetterNameplatesScaleEnabledCheck",
+        L.ENABLE_NAMEPLATE_SCALE,
+        6,
+        -52,
+        function(value)
+            self.db.scaleEnabled = value
+            self:ApplyNameplateScale()
+            self:ApplyAll()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -594,7 +1150,7 @@ function addon:CreateOptions()
         "BetterNameplatesMinimapCheck",
         L.SHOW_MINIMAP_BUTTON,
         6,
-        -52,
+        -88,
         function(value)
             self.db.showMinimapButton = value
             if self.UpdateMinimapButton then
@@ -603,7 +1159,7 @@ function addon:CreateOptions()
         end
     )
 
-    CreateSectionTitle(generalPanel, L.SECTION_SCALE, 10, -105)
+    CreateSectionTitle(generalPanel, L.SECTION_SCALE, 10, -135)
     controls.scale = CreateSlider(
         generalPanel,
         "BetterNameplatesScaleSlider",
@@ -612,20 +1168,80 @@ function addon:CreateOptions()
         2.0,
         0.1,
         22,
-        -153,
-        310,
+        -183,
+        190,
+        0.8,
         function(value)
             self.db.nameplateScale = value
             self:ApplyNameplateScale()
             self:ApplyAll()
+            self:UpdateOptionsPreviews()
         end
     )
 
     local scaleHint = generalPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    scaleHint:SetPoint("TOPLEFT", generalPanel, "TOPLEFT", 22, -208)
-    scaleHint:SetWidth(430)
+    scaleHint:SetPoint("TOPLEFT", generalPanel, "TOPLEFT", 22, -238)
+    scaleHint:SetWidth(438)
     scaleHint:SetJustifyH("LEFT")
     scaleHint:SetText(L.SCALE_HINT)
+
+    controls.nameScale = CreateSlider(
+        generalPanel,
+        "BetterNameplatesNameScaleSlider",
+        L.NAME_SCALE,
+        0.5,
+        2.0,
+        0.1,
+        270,
+        -183,
+        190,
+        1.0,
+        function(value)
+            self.db.nameScale = value
+            self:SyncBetterBlizzPlatesTextScales(true)
+            self:ApplyAll()
+            self:UpdateOptionsPreviews()
+        end
+    )
+
+    controls.levelScale = CreateSlider(
+        generalPanel,
+        "BetterNameplatesLevelScaleSlider",
+        L.LEVEL_SCALE,
+        0.5,
+        2.0,
+        0.1,
+        22,
+        -285,
+        190,
+        1.0,
+        function(value)
+            self.db.levelScale = value
+            self:ApplyAll()
+            self:UpdateOptionsPreviews()
+        end
+    )
+
+    controls.healthNumberScale = CreateSlider(
+        generalPanel,
+        "BetterNameplatesHealthNumberScaleSlider",
+        L.HEALTH_NUMBER_SCALE,
+        0.5,
+        2.0,
+        0.1,
+        270,
+        -285,
+        190,
+        1.0,
+        function(value)
+            self.db.healthNumberScale = value
+            self:SyncBetterBlizzPlatesTextScales(true)
+            self:ApplyAll()
+            self:UpdateOptionsPreviews()
+        end
+    )
+
+    CreateNameplatePreview(generalPanel)
 
     CreateSectionTitle(levelPanel, L.SECTION_LEVEL, 10, -10)
     controls.showLevel = CreateCheckBox(
@@ -637,6 +1253,7 @@ function addon:CreateOptions()
         function(value)
             self.db.showLevel = value
             self:ApplyAll()
+            self:UpdateOptionsPreviews()
         end
     )
     controls.showEnemyLevel = CreateCheckBox(
@@ -648,6 +1265,7 @@ function addon:CreateOptions()
         function(value)
             self.db.showEnemyLevel = value
             self:ApplyAll()
+            self:UpdateOptionsPreviews()
         end
     )
     controls.showFriendlyLevel = CreateCheckBox(
@@ -659,6 +1277,7 @@ function addon:CreateOptions()
         function(value)
             self.db.showFriendlyLevel = value
             self:ApplyAll()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -677,6 +1296,7 @@ function addon:CreateOptions()
         function(value)
             self.db.levelColorByDifficulty = value
             self:ApplyAll()
+            self:UpdateOptionsPreviews()
         end
     )
     controls.levelSide = CreateSideDropdown(levelPanel, 16, -277)
@@ -694,6 +1314,7 @@ function addon:CreateOptions()
         function(value)
             self.db.showThreat = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -704,11 +1325,12 @@ function addon:CreateOptions()
         threatPanel,
         "BetterNameplatesDynamicThreatSizeCheck",
         L.DYNAMIC_THREAT_SIZE,
-        6,
-        -185,
+        250,
+        -217,
         function(value)
             self.db.dynamicThreatSize = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -721,6 +1343,7 @@ function addon:CreateOptions()
         function(value)
             self.db.threatCombatOnly = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -733,6 +1356,7 @@ function addon:CreateOptions()
         function(value)
             self.db.colorizeThreatText = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -746,9 +1370,11 @@ function addon:CreateOptions()
         22,
         -270,
         190,
+        1.0,
         function(value)
             self.db.threatSize = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -757,14 +1383,16 @@ function addon:CreateOptions()
         "BetterNameplatesDynamicThreatMaxSizeSlider",
         L.DYNAMIC_THREAT_MAX_SIZE,
         1.0,
-        2.0,
+        3.0,
         0.1,
         270,
         -270,
         190,
+        1.8,
         function(value)
             self.db.dynamicThreatMaxSize = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -778,9 +1406,11 @@ function addon:CreateOptions()
         22,
         -330,
         190,
+        0.5,
         function(value)
             self.db.threatBackgroundOpacity = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
 
@@ -794,19 +1424,22 @@ function addon:CreateOptions()
         270,
         -330,
         190,
+        2,
         function(value)
             self.db.threatOffset = value
             self:UpdateThreatDisplays()
+            self:UpdateOptionsPreviews()
         end
     )
+
+    CreateThreatPreview(threatPanel)
 
     local reset = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     reset:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -152, 15)
     reset:SetSize(120, 24)
     reset:SetText(L.RESET)
     reset:SetScript("OnClick", function()
-        self:ResetDatabase()
-        self:Print(L.SETTINGS_RESET)
+        self:RequestReset()
     end)
 
     local closeButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
@@ -822,7 +1455,28 @@ function addon:CreateOptions()
     commandHint:SetText(L.OPEN_HINT)
 
     window:SetScript("OnShow", function()
+        if window.UpdateResizeBounds then
+            window:UpdateResizeBounds()
+        end
         self:RefreshOptions()
+    end)
+    window:SetScript("OnUpdate", function(_, elapsed)
+        if not threatPanel:IsShown()
+            or not controls.threatLivePreview
+            or not controls.threatLivePreview:GetChecked()
+        then
+            return
+        end
+
+        previewState.threatElapsed = previewState.threatElapsed + elapsed
+        if previewState.threatElapsed < 0.05 then
+            return
+        end
+
+        previewState.threatPercentage =
+            (previewState.threatPercentage + (previewState.threatElapsed * 25)) % 101
+        previewState.threatElapsed = 0
+        UpdateThreatPreview()
     end)
 
     local settingsPanel = CreateFrame("Frame")
