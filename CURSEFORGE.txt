@@ -5,6 +5,21 @@ English summary
 ---------------
 BetterNameplates is a lightweight, taint-safe extension for Blizzard's Modern nameplates in WoW Classic Era that adds compact scaling, in-bar unit levels, and fully customizable dynamic threat percentages without replacing the default nameplates.
 
+V1.1 highlights
+---------------
+- Live 0.1-second threat updates with low-FPS flicker protection
+- Correct dynamic threat growth and freely selectable maximum size
+- Independent nameplate, scaling, level, threat, minimap, and preview switches
+- Live nameplate and animated threat previews
+- Classic-native level difficulty colors and enemy-only skull handling
+- Friendly units always use their available numeric level
+- Independent level scaling and automatic long-name truncation
+- Independent name and visible HP-number scaling
+- Dynamic HP-number width reservation prevents text overlap
+- Precisely aligned default markers on every slider
+- Resizable settings window with saved size and position
+- Confirmation before resetting all settings
+
 Categories
 ----------
 Main category: Unit Frames

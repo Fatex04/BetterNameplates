@@ -5,13 +5,17 @@ _G.BetterNameplates = addon
 
 addon.defaults = {
     enabled = true,
+    scaleEnabled = true,
     nameplateScale = 0.8,
+    nameScale = 1.0,
+    healthNumberScale = 1.0,
 
     showLevel = true,
     showEnemyLevel = true,
     showFriendlyLevel = true,
     levelSide = "RIGHT",
     levelFormat = "BRACKETS",
+    levelScale = 1.0,
     levelColorByDifficulty = true,
 
     showThreat = true,
@@ -19,17 +23,20 @@ addon.defaults = {
     threatPosition = "TOP",
     threatSize = 1.0,
     threatOffset = 2,
-    threatBackgroundOpacity = 0.45,
+    threatBackgroundOpacity = 0.5,
     dynamicThreatSize = true,
-    dynamicThreatMaxSize = 1.4,
+    dynamicThreatMaxSize = 1.8,
     threatCombatOnly = true,
     colorizeThreatText = false,
 
     showMinimapButton = true,
     minimapAngle = 225,
+    optionsWindowWidth = 720,
+    optionsWindowHeight = 650,
 }
 
 addon.activePlates = {}
+addon.threatCache = {}
 addon.pendingScale = false
 
 local eventFrame = CreateFrame("Frame")
@@ -82,13 +89,26 @@ end
 
 addon.CopyTable = CopyTable
 
+local function GetNameplateHorizontalScale(scale)
+    scale = Clamp(scale, 0.5, 2.0)
+    if scale <= 0.6 then
+        return 0.82
+    elseif scale < 0.8 then
+        return 0.82 + (((scale - 0.6) / 0.2) * 0.18)
+    end
+    return 1
+end
+
+addon.GetNameplateHorizontalScale = GetNameplateHorizontalScale
+
 function addon:ApplyNameplateScale()
     if not self.db then
         return
     end
 
-    local scale = RoundToStep(Clamp(self.db.nameplateScale, 0.5, 2.0), 0.1)
-    self.db.nameplateScale = scale
+    local configuredScale = RoundToStep(Clamp(self.db.nameplateScale, 0.5, 2.0), 0.1)
+    self.db.nameplateScale = configuredScale
+    local scale = self.db.enabled and self.db.scaleEnabled and configuredScale or 1.0
 
     if InCombatLockdown and InCombatLockdown() then
         self.pendingScale = true
@@ -106,12 +126,7 @@ function addon:ApplyNameplateScale()
     end
 
     local value = string.format("%.1f", scale)
-    local horizontalScale = 1
-    if scale <= 0.6 then
-        horizontalScale = 0.82
-    elseif scale < 0.8 then
-        horizontalScale = 0.82 + (((scale - 0.6) / 0.2) * 0.18)
-    end
+    local horizontalScale = GetNameplateHorizontalScale(scale)
 
     SetScaleCVar("nameplateGlobalScale", "1")
     SetScaleCVar("nameplateMinScale", value)
@@ -178,7 +193,19 @@ local function CreateOverlay(plate, unitFrame)
     overlay.inlineName:SetWordWrap(false)
     overlay.inlineName:SetMaxLines(1)
     overlay.inlineName:Hide()
+
+    overlay.inlineLevel = unitFrame:CreateFontString(nil, "OVERLAY")
+    overlay.inlineLevel:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+    overlay.inlineLevel:SetShadowOffset(1, -1)
+    overlay.inlineLevel:SetShadowColor(0, 0, 0, 1)
+    overlay.inlineLevel:SetWordWrap(false)
+    overlay.inlineLevel:SetMaxLines(1)
+    overlay.inlineLevel:Hide()
     overlay.nameHidden = false
+    overlay.originalNameScale = unitFrame.name
+        and unitFrame.name.GetScale
+        and unitFrame.name:GetScale()
+        or 1
 
     overlay.threatFrame = CreateFrame("Frame", nil, plate, "BackdropTemplate")
     overlay.threatFrame:SetSize(48, 14)
@@ -194,7 +221,7 @@ local function CreateOverlay(plate, unitFrame)
 
     overlay.threatText = overlay.threatFrame:CreateFontString(nil, "OVERLAY")
     overlay.threatText:SetPoint("CENTER", overlay.threatFrame, "CENTER", 0, 0)
-    overlay.threatText:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+    overlay.threatText:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     overlay.threatText:SetTextColor(1, 1, 1, 1)
     overlay.threatText:SetShadowOffset(1, -1)
     overlay.threatText:SetShadowColor(0, 0, 0, 1)
@@ -232,20 +259,129 @@ local function RestoreBlizzardName(unitFrame, overlay)
     end
     overlay.nameHidden = false
     overlay.inlineName:Hide()
+    overlay.inlineLevel:Hide()
+end
+
+local function GetHealthNumbers(unitFrame)
+    return unitFrame.healthNumbers
+        or unitFrame.healthText
+        or unitFrame.HealthText
+end
+
+local function ApplyTextScales(unitFrame, overlay)
+    local nameText = unitFrame.name
+    local nameForbidden = nameText
+        and nameText.IsForbidden
+        and nameText:IsForbidden()
+    if nameText and nameText.SetScale and not nameForbidden then
+        local scale = addon.db.enabled
+            and Clamp(addon.db.nameScale, 0.5, 2.0)
+            or overlay.originalNameScale
+        nameText:SetScale(scale)
+    end
+
+    local healthNumbers = GetHealthNumbers(unitFrame)
+    local healthForbidden = healthNumbers
+        and healthNumbers.IsForbidden
+        and healthNumbers:IsForbidden()
+    if healthNumbers and healthNumbers.SetScale and not healthForbidden then
+        if overlay.healthNumbersRegion ~= healthNumbers then
+            overlay.healthNumbersRegion = healthNumbers
+            overlay.originalHealthNumberScale = healthNumbers.GetScale
+                and healthNumbers:GetScale()
+                or 1
+        end
+        local scale = addon.db.enabled
+            and Clamp(addon.db.healthNumberScale, 0.5, 2.0)
+            or overlay.originalHealthNumberScale
+        healthNumbers:SetScale(scale)
+    end
+end
+
+local function GetHealthNumbersInset(unitFrame, barWidth)
+    local healthNumbers = GetHealthNumbers(unitFrame)
+    if not healthNumbers
+        or (healthNumbers.IsForbidden and healthNumbers:IsForbidden())
+        or not healthNumbers.IsShown
+        or not healthNumbers:IsShown()
+    then
+        return 5
+    end
+
+    if healthNumbers.GetText then
+        local ok, text = pcall(healthNumbers.GetText, healthNumbers)
+        if ok and (not text or text == "") then
+            return 5
+        end
+    end
+
+    local textWidth = 0
+    if healthNumbers.GetStringWidth then
+        local ok, width = pcall(healthNumbers.GetStringWidth, healthNumbers)
+        if ok then
+            textWidth = tonumber(width) or 0
+        end
+    end
+
+    local visualScale = Clamp(addon.db.healthNumberScale, 0.5, 2.0)
+    if healthNumbers.GetEffectiveScale
+        and unitFrame.healthBar.GetEffectiveScale
+    then
+        local numberOK, numberScale = pcall(
+            healthNumbers.GetEffectiveScale,
+            healthNumbers
+        )
+        local barOK, barScale = pcall(
+            unitFrame.healthBar.GetEffectiveScale,
+            unitFrame.healthBar
+        )
+        if numberOK
+            and barOK
+            and numberScale
+            and barScale
+            and barScale > 0
+        then
+            visualScale = numberScale / barScale
+        end
+    end
+
+    local measuredInset = math.ceil((textWidth * visualScale) + 12)
+    local safeInset = math.ceil((48 * visualScale) + 6)
+    return math.min(barWidth * 0.55, math.max(measuredInset, safeInset))
 end
 
 local function GetLevelDisplay(unit, level)
     local playerLevel = UnitLevel("player") or 1
     local classification = UnitClassification and UnitClassification(unit)
-    local showSkull = level < 0
-        or classification == "worldboss"
-        or level >= playerLevel + 10
+    local isAttackable = UnitCanAttack and UnitCanAttack("player", unit)
+
+    -- Blizzard can conceal an enemy's level as -1. Friendly units should keep
+    -- their numeric level whenever the client exposes an effective level.
+    if not isAttackable and level < 0 and UnitEffectiveLevel then
+        local effectiveLevel = UnitEffectiveLevel(unit)
+        if effectiveLevel and effectiveLevel > 0 then
+            level = effectiveLevel
+        end
+    end
+
+    local showSkull = isAttackable
+        and (level < 0 or classification == "worldboss")
 
     local display
     if showSkull then
-        display = "|TInterface\\TargetingFrame\\UI-TargetingFrame-Skull:17:17:0:-1|t"
-    else
+        local skullSize = math.max(
+            8,
+            math.floor(17 * Clamp(addon.db.levelScale, 0.5, 2.0) + 0.5)
+        )
+        display = string.format(
+            "|TInterface\\TargetingFrame\\UI-TargetingFrame-Skull:%d:%d:0:-1|t",
+            skullSize,
+            skullSize
+        )
+    elseif level and level > 0 then
         display = tostring(level)
+    else
+        display = "??"
     end
 
     if addon.db.levelFormat == "BRACKETS" then
@@ -258,24 +394,121 @@ local function GetLevelDisplay(unit, level)
         return display
     end
 
-    local difference = level - playerLevel
     local r, g, b
-    if difference <= -10 then
-        r, g, b = 0.5, 0.5, 0.5
-    elseif difference < 0 then
-        r, g, b = 0.25, 0.85, 0.25
-    elseif difference <= 2 then
-        r, g, b = 1, 0.82, 0
+    if not isAttackable then
+        local color = UNIT_LEVEL_NON_ATTACKABLE or NORMAL_FONT_COLOR
+        r = color and color.r or 1
+        g = color and color.g or 1
+        b = color and color.b or 1
     else
-        r, g, b = 1, 0.15, 0.15
+        local color
+        if GetRelativeDifficultyColor then
+            color = GetRelativeDifficultyColor(playerLevel, level)
+        elseif GetCreatureDifficultyColor then
+            color = GetCreatureDifficultyColor(level)
+        end
+
+        if color then
+            r, g, b = color.r, color.g, color.b
+        else
+            -- Compatibility fallback for clients without Blizzard's helpers.
+            local difference = level - playerLevel
+            local grayLevel
+            if playerLevel <= 5 then
+                grayLevel = 0
+            elseif playerLevel <= 39 then
+                grayLevel = playerLevel - math.floor(playerLevel / 10) - 5
+            elseif playerLevel <= 59 then
+                grayLevel = playerLevel - 1 - math.floor(playerLevel / 5)
+            else
+                grayLevel = playerLevel - 9
+            end
+
+            if level <= grayLevel then
+                r, g, b = 0.5, 0.5, 0.5
+            elseif difference <= -3 then
+                r, g, b = 0.25, 0.75, 0.25
+            elseif difference <= 2 then
+                r, g, b = 1, 0.82, 0
+            elseif difference <= 4 then
+                r, g, b = 1, 0.5, 0.25
+            else
+                r, g, b = 1, 0.1, 0.1
+            end
+        end
     end
 
     return ToColorCode(r, g, b) .. display .. "|r"
 end
 
+local function UTF8Length(text)
+    local count = 0
+    for index = 1, #text do
+        local byte = string.byte(text, index)
+        if byte < 128 or byte >= 192 then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function UTF8Sub(text, characterCount)
+    if characterCount <= 0 then
+        return ""
+    end
+
+    local count = 0
+    for index = 1, #text do
+        local byte = string.byte(text, index)
+        if byte < 128 or byte >= 192 then
+            count = count + 1
+            if count > characterCount then
+                return string.sub(text, 1, index - 1)
+            end
+        end
+    end
+    return text
+end
+
+local function TruncateToWidth(fontString, text, maximumWidth)
+    maximumWidth = math.max(0, tonumber(maximumWidth) or 0)
+    fontString:SetWidth(0)
+    fontString:SetText(text)
+    if fontString:GetStringWidth() <= maximumWidth then
+        return text
+    end
+
+    local suffix = "..."
+    fontString:SetText(suffix)
+    if fontString:GetStringWidth() > maximumWidth then
+        return ""
+    end
+
+    local low = 0
+    local high = UTF8Length(text)
+    local best = ""
+    while low <= high do
+        local middle = math.floor((low + high) / 2)
+        local candidate = UTF8Sub(text, middle) .. suffix
+        fontString:SetText(candidate)
+        if fontString:GetStringWidth() <= maximumWidth then
+            best = candidate
+            low = middle + 1
+        else
+            high = middle - 1
+        end
+    end
+    return best
+end
+
+addon.TruncateToWidth = TruncateToWidth
+
 local function UpdateLevel(unit, unitFrame, overlay)
     local inlineName = overlay.inlineName
+    local inlineLevel = overlay.inlineLevel
     local nameText = unitFrame.name
+
+    ApplyTextScales(unitFrame, overlay)
 
     if not ShouldShowLevel(unit) then
         RestoreBlizzardName(unitFrame, overlay)
@@ -295,11 +528,14 @@ local function UpdateLevel(unit, unitFrame, overlay)
     end
 
     local nameR, nameG, nameB = 1, 1, 1
+    local nameFont = STANDARD_TEXT_FONT
+    local nameSize = 11
     local nameForbidden = nameText and nameText.IsForbidden and nameText:IsForbidden()
     if nameText and not nameForbidden then
         local font, size = nameText:GetFont()
         if font and size then
-            inlineName:SetFont(font, size, "OUTLINE")
+            nameFont = font
+            nameSize = size
         end
         nameR, nameG, nameB = nameText:GetTextColor()
 
@@ -310,25 +546,62 @@ local function UpdateLevel(unit, unitFrame, overlay)
         nameText:SetAlpha(0)
     end
 
-    local levelDisplay = GetLevelDisplay(unit, level)
-    local nameDisplay = ToColorCode(nameR, nameG, nameB) .. unitName .. "|r"
-    local combined
+    inlineName:SetFont(
+        nameFont,
+        math.max(7, nameSize * Clamp(addon.db.nameScale, 0.5, 2.0)),
+        "OUTLINE"
+    )
+    inlineName:SetTextColor(nameR, nameG, nameB, 1)
+    inlineLevel:SetFont(
+        nameFont,
+        math.max(7, nameSize * Clamp(addon.db.levelScale, 0.5, 2.0)),
+        "OUTLINE"
+    )
 
-    if nameForbidden then
-        combined = levelDisplay
-    elseif addon.db.levelSide == "LEFT" then
-        combined = levelDisplay .. "  " .. nameDisplay
-    else
-        combined = nameDisplay .. "  " .. levelDisplay
+    local levelDisplay = GetLevelDisplay(unit, level)
+    inlineName:ClearAllPoints()
+    inlineLevel:ClearAllPoints()
+    inlineLevel:SetWidth(0)
+    inlineLevel:SetText(levelDisplay)
+
+    local barWidth = unitFrame.healthBar:GetWidth()
+    if not barWidth or barWidth <= 0 then
+        barWidth = 120
+    end
+    local rightInset = GetHealthNumbersInset(unitFrame, barWidth)
+    local levelWidth = math.ceil(inlineLevel:GetStringWidth())
+    local gap = 4
+    local nameWidth = math.max(0, barWidth - 5 - rightInset - levelWidth - gap)
+
+    local truncatedName
+    if not nameForbidden then
+        truncatedName = TruncateToWidth(inlineName, unitName, nameWidth)
     end
 
-    local rightInset = unitFrame.healthNumbers and unitFrame.healthNumbers:IsShown() and 48 or 5
-    inlineName:ClearAllPoints()
-    inlineName:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
-    inlineName:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
-    inlineName:SetJustifyH(addon.db.levelSide == "LEFT" and "LEFT" or "RIGHT")
-    inlineName:SetText(combined)
-    inlineName:Show()
+    if nameForbidden then
+        inlineName:Hide()
+        if addon.db.levelSide == "LEFT" then
+            inlineLevel:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
+        else
+            inlineLevel:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
+        end
+    elseif addon.db.levelSide == "LEFT" then
+        inlineLevel:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
+        inlineName:SetPoint("LEFT", inlineLevel, "RIGHT", gap, 0)
+        inlineName:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
+        inlineName:SetJustifyH("LEFT")
+    else
+        inlineLevel:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
+        inlineName:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
+        inlineName:SetPoint("RIGHT", inlineLevel, "LEFT", -gap, 0)
+        inlineName:SetJustifyH("LEFT")
+    end
+
+    if not nameForbidden then
+        inlineName:SetText(truncatedName)
+        inlineName:Show()
+    end
+    inlineLevel:Show()
 end
 
 local function IsEnemyUnit(unit)
@@ -337,21 +610,50 @@ local function IsEnemyUnit(unit)
         and UnitCanAttack("player", unit)
 end
 
+local THREAT_CACHE_GRACE = 0.35
+
 local function GetThreatData(unit)
     if not IsEnemyUnit(unit) then
         return nil
     end
 
-    local isTanking, status, _, rawPercentage = UnitDetailedThreatSituation("player", unit)
-    local percentage = tonumber(rawPercentage) or 0
+    local inCombat = UnitAffectingCombat("player")
+    local guid = UnitGUID(unit)
+    local now = GetTime and GetTime() or 0
+    local _, status, scaledPercentage, rawPercentage =
+        UnitDetailedThreatSituation("player", unit)
+    local percentage = tonumber(scaledPercentage) or tonumber(rawPercentage)
+    local cached = guid and addon.threatCache[guid]
 
-    if isTanking and UnitThreatPercentageOfLead then
-        percentage = tonumber(UnitThreatPercentageOfLead("player", unit)) or percentage
+    if percentage == nil
+        or (percentage <= 0
+            and inCombat
+            and cached
+            and cached.percentage > 0
+            and now - cached.updatedAt <= THREAT_CACHE_GRACE)
+    then
+        if inCombat
+            and cached
+            and now - cached.updatedAt <= THREAT_CACHE_GRACE
+        then
+            percentage = cached.percentage
+            status = cached.status
+        else
+            percentage = 0
+        end
     end
 
-    percentage = Clamp(percentage, 0, 999)
+    percentage = Clamp(percentage, 0, 100)
+    if guid and percentage > 0 then
+        addon.threatCache[guid] = {
+            percentage = percentage,
+            status = status,
+            updatedAt = now,
+        }
+    end
+
     if addon.db.threatCombatOnly
-        and (not UnitAffectingCombat("player") or percentage <= 0)
+        and (not inCombat or percentage <= 0)
     then
         return nil
     end
@@ -390,6 +692,8 @@ local function GetThreatColor(percentage)
     return 1, 0.1, 0.1
 end
 
+addon.GetThreatColor = GetThreatColor
+
 local function HideThreat(overlay)
     if overlay and overlay.threatFrame then
         overlay.threatFrame:Hide()
@@ -415,32 +719,61 @@ local function SetThreatPosition(threatFrame, unitFrame, position, offset)
     end
 end
 
+addon.SetThreatPosition = SetThreatPosition
+
+local function GetThreatVisualSize(percentage)
+    local size = RoundToStep(Clamp(addon.db.threatSize, 0.5, 2.0), 0.1)
+    if addon.db.dynamicThreatSize then
+        local maximum = RoundToStep(
+            Clamp(addon.db.dynamicThreatMaxSize, 1.0, 3.0),
+            0.1
+        )
+        if size >= maximum then
+            size = math.max(0.5, maximum - 0.5)
+        end
+        local progress = Clamp(percentage / 100, 0, 1)
+        size = size + ((maximum - size) * progress)
+    end
+    return size
+end
+
+addon.GetThreatVisualSize = GetThreatVisualSize
+
+local function ApplyThreatAppearance(threatFrame, threatText, percentage)
+    local size = GetThreatVisualSize(percentage)
+    local opacity = RoundToStep(
+        Clamp(addon.db.threatBackgroundOpacity, 0, 1),
+        0.1
+    )
+    local r, g, b = GetThreatColor(percentage)
+
+    threatFrame:SetSize(48, 14)
+    threatFrame:SetScale(size)
+    threatFrame:SetBackdropColor(r, g, b, opacity)
+    threatFrame:SetBackdropBorderColor(
+        0.02,
+        0.02,
+        0.02,
+        opacity > 0 and math.min(1, opacity + 0.25) or 0
+    )
+    threatText:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    if addon.db.colorizeThreatText then
+        threatText:SetTextColor(r, g, b, 1)
+    else
+        threatText:SetTextColor(1, 1, 1, 1)
+    end
+    threatText:SetText(string.format("%d%%", math.floor(percentage + 0.5)))
+end
+
+addon.ApplyThreatAppearance = ApplyThreatAppearance
+
 local function UpdateThreatOverlay(unit, unitFrame, overlay, shouldShow, percentage, status)
     if not shouldShow or percentage == nil then
         HideThreat(overlay)
         return
     end
 
-    local size = RoundToStep(Clamp(addon.db.threatSize, 0.5, 2.0), 0.1)
-    if addon.db.dynamicThreatSize then
-        local maximum = RoundToStep(
-            Clamp(addon.db.dynamicThreatMaxSize, 1.0, 2.0),
-            0.1
-        )
-        maximum = math.max(size, maximum)
-        local progress = Clamp(percentage / 100, 0, 1)
-        size = size + ((maximum - size) * progress)
-    end
-
     local offset = math.floor(Clamp(addon.db.threatOffset, -40, 40) + 0.5)
-    local width = math.floor((48 * size) + 0.5)
-    local height = math.floor((14 * size) + 0.5)
-    local fontSize = math.max(7, math.floor((10 * size) + 0.5))
-    local opacity = RoundToStep(
-        Clamp(addon.db.threatBackgroundOpacity, 0, 1),
-        0.1
-    )
-    local r, g, b = GetThreatColor(percentage)
 
     SetThreatPosition(
         overlay.threatFrame,
@@ -448,21 +781,7 @@ local function UpdateThreatOverlay(unit, unitFrame, overlay, shouldShow, percent
         addon.db.threatPosition,
         offset
     )
-    overlay.threatFrame:SetSize(width, height)
-    overlay.threatFrame:SetBackdropColor(r, g, b, opacity)
-    overlay.threatFrame:SetBackdropBorderColor(
-        0.02,
-        0.02,
-        0.02,
-        opacity > 0 and math.min(1, opacity + 0.25) or 0
-    )
-    overlay.threatText:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
-    if addon.db.colorizeThreatText then
-        overlay.threatText:SetTextColor(r, g, b, 1)
-    else
-        overlay.threatText:SetTextColor(1, 1, 1, 1)
-    end
-    overlay.threatText:SetText(string.format("%d%%", math.floor(percentage + 0.5)))
+    ApplyThreatAppearance(overlay.threatFrame, overlay.threatText, percentage)
     overlay.threatFrame:Show()
 end
 
@@ -513,7 +832,7 @@ function addon:UpdateThreatDisplays()
     end
 
     for _, candidate in ipairs(candidates) do
-        local shouldShow = self.db.enabled and self.db.showThreat
+        local shouldShow = self.db.showThreat
         if self.db.threatDisplayMode == "HIGHEST" then
             shouldShow = shouldShow and candidate == highest
         end
@@ -547,7 +866,7 @@ function addon:UpdatePlate(unit)
             unit,
             unitFrame,
             overlay,
-            self.db.enabled and self.db.showThreat,
+            self.db.showThreat,
             percentage,
             status
         )
@@ -558,11 +877,16 @@ end
 
 function addon:HidePlate(unit)
     local plate = self.activePlates[unit]
+    local guid = UnitGUID(unit)
+    if guid then
+        self.threatCache[guid] = nil
+    end
     if plate and plate.BetterNameplatesOverlay then
         if plate.UnitFrame then
             RestoreBlizzardName(plate.UnitFrame, plate.BetterNameplatesOverlay)
         else
             plate.BetterNameplatesOverlay.inlineName:Hide()
+            plate.BetterNameplatesOverlay.inlineLevel:Hide()
         end
         HideThreat(plate.BetterNameplatesOverlay)
     end
@@ -612,8 +936,12 @@ function addon:ApplyGroupPlates()
 end
 
 function addon:ResetDatabase()
+    wipe(self.threatCache)
     BetterNameplatesDB = CopyTable(self.defaults)
     self.db = BetterNameplatesDB
+    if self.ResetOptionsWindowLayout then
+        self:ResetOptionsWindowLayout()
+    end
     self:ApplyNameplateScale()
     self:ApplyAll()
     if self.UpdateMinimapButton then
@@ -635,6 +963,24 @@ local function InitializeDatabase()
     BetterNameplatesDB.nameplateScale = RoundToStep(
         Clamp(BetterNameplatesDB.nameplateScale, 0.5, 2.0),
         0.1
+    )
+    BetterNameplatesDB.nameScale = RoundToStep(
+        Clamp(BetterNameplatesDB.nameScale, 0.5, 2.0),
+        0.1
+    )
+    BetterNameplatesDB.healthNumberScale = RoundToStep(
+        Clamp(BetterNameplatesDB.healthNumberScale, 0.5, 2.0),
+        0.1
+    )
+    BetterNameplatesDB.levelScale = RoundToStep(
+        Clamp(BetterNameplatesDB.levelScale, 0.5, 2.0),
+        0.1
+    )
+    BetterNameplatesDB.optionsWindowWidth = math.floor(
+        Clamp(BetterNameplatesDB.optionsWindowWidth, 720, 3840) + 0.5
+    )
+    BetterNameplatesDB.optionsWindowHeight = math.floor(
+        Clamp(BetterNameplatesDB.optionsWindowHeight, 650, 2160) + 0.5
     )
     if BetterNameplatesDB.levelFormat ~= "BRACKETS"
         and BetterNameplatesDB.levelFormat ~= "PREFIX"
@@ -679,7 +1025,7 @@ local function InitializeDatabase()
         0.1
     )
     BetterNameplatesDB.dynamicThreatMaxSize = RoundToStep(
-        Clamp(BetterNameplatesDB.dynamicThreatMaxSize, 1.0, 2.0),
+        Clamp(BetterNameplatesDB.dynamicThreatMaxSize, 1.0, 3.0),
         0.1
     )
     BetterNameplatesDB.levelBrackets = nil
@@ -695,7 +1041,6 @@ eventFrame:RegisterEvent("ADDON_LOADED")
 local threatUpdateElapsed = 0
 eventFrame:SetScript("OnUpdate", function(_, elapsed)
     if not addon.db
-        or not addon.db.enabled
         or not addon.db.showThreat
         or not UnitAffectingCombat("player")
     then
@@ -704,8 +1049,8 @@ eventFrame:SetScript("OnUpdate", function(_, elapsed)
     end
 
     threatUpdateElapsed = threatUpdateElapsed + elapsed
-    if threatUpdateElapsed >= 0.2 then
-        threatUpdateElapsed = 0
+    if threatUpdateElapsed >= 0.1 then
+        threatUpdateElapsed = threatUpdateElapsed - 0.1
         addon:UpdateThreatDisplays()
     end
 end)
@@ -772,6 +1117,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
     then
         addon:UpdateThreatDisplays()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        wipe(addon.threatCache)
         if addon.pendingScale then
             addon:ApplyNameplateScale()
         end
@@ -826,8 +1172,9 @@ SlashCmdList.BETTERNAMEPLATES = function(message)
             addon:RefreshOptions()
         end
     elseif command == "reset" then
-        addon:ResetDatabase()
-        Print(L.SETTINGS_RESET)
+        if addon.RequestReset then
+            addon:RequestReset()
+        end
     else
         Print(L.HELP_OPEN)
         Print(L.HELP_SCALE)
