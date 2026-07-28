@@ -22,7 +22,7 @@ local CHANGELOG_TEXT = [=[|cff9d8cffV1.1|r
 • Added live nameplate and animated threat previews.
 • Added independent 0.5-2.0 level scaling with the original 1.0 size as default.
 • Added independent 0.5-2.0 size controls for names and visible HP numbers.
-• Fixed BetterBlizzPlates overwriting BNP's name and HP-number sizes.
+• BNP name and HP sizes now directly synchronize with BetterBlizzPlates and refresh its cache.
 • Long names reserve the measured HP-number width and end in ... without overlap.
 • Fixed repeated updates bypassing name truncation because of retained anchors.
 • All sliders show their original default with a precisely aligned gold marker.
@@ -1121,6 +1121,7 @@ function addon:CreateOptions()
         -16,
         function(value)
             self.db.enabled = value
+            self:SyncBetterBlizzPlatesTextScales(true)
             self:ApplyNameplateScale()
             self:ApplyAll()
             self:UpdateOptionsPreviews()
@@ -1194,6 +1195,7 @@ function addon:CreateOptions()
         1.0,
         function(value)
             self.db.nameScale = value
+            self:SyncBetterBlizzPlatesTextScales(true)
             self:ApplyAll()
             self:UpdateOptionsPreviews()
         end
@@ -1230,6 +1232,7 @@ function addon:CreateOptions()
         1.0,
         function(value)
             self.db.healthNumberScale = value
+            self:SyncBetterBlizzPlatesTextScales(true)
             self:ApplyAll()
             self:UpdateOptionsPreviews()
         end

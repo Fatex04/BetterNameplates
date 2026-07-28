@@ -13,8 +13,8 @@ Level lassen sich unabhängig skalieren, lange Namen werden mit `...` gekürzt,
 und alle Regler zeigen ihren jeweiligen Standardwert exakt an der Reglerposition.
 Auch Namen und sichtbare HP-Zahlen lassen sich getrennt skalieren; die Kürzung
 reserviert automatisch die tatsächlich benötigte Breite der HP-Zahl.
-Eine Kompatibilitätsschicht verhindert, dass BetterBlizzPlates diese beiden
-BNP-Größen nach einem Nameplate- oder Lebenspunkte-Update wieder überschreibt.
+Eine Kompatibilitätsschicht synchronisiert die BNP-Regler direkt mit den
+zuständigen BetterBlizzPlates-Werten und aktualisiert dessen internen Cache.
 Level-Farben und Totenköpfe folgen der Blizzard-Classic-Logik; Verbündete zeigen
 immer ihr verfügbares Zahlenlevel. Das Einstellungsfenster ist unten rechts
 skalierbar und merkt sich Größe sowie Position.

@@ -924,6 +924,55 @@ function addon:InstallCompatibilityHooks()
     self.betterBlizzPlatesHooksInstalled = installed
 end
 
+function addon:SyncBetterBlizzPlatesTextScales(refreshNameplates)
+    if not self.db or type(BetterBlizzPlatesDB) ~= "table" then
+        return
+    end
+
+    if not self.betterBlizzPlatesOriginalTextScales then
+        self.betterBlizzPlatesOriginalTextScales = {
+            healthNumbersScale = BetterBlizzPlatesDB.healthNumbersScale or 1,
+            enemyNameScale = BetterBlizzPlatesDB.enemyNameScale or 1,
+            friendlyNameScale = BetterBlizzPlatesDB.friendlyNameScale or 1,
+        }
+    end
+
+    local nameScale
+    local healthNumberScale
+    if self.db.enabled then
+        nameScale = Clamp(self.db.nameScale, 0.5, 2.0)
+        healthNumberScale = Clamp(self.db.healthNumberScale, 0.5, 2.0)
+    else
+        nameScale = self.betterBlizzPlatesOriginalTextScales.enemyNameScale
+        healthNumberScale =
+            self.betterBlizzPlatesOriginalTextScales.healthNumbersScale
+    end
+
+    local friendlyNameScale = self.db.enabled
+        and nameScale
+        or self.betterBlizzPlatesOriginalTextScales.friendlyNameScale
+    local changed =
+        BetterBlizzPlatesDB.healthNumbersScale ~= healthNumberScale
+        or BetterBlizzPlatesDB.enemyNameScale ~= nameScale
+        or BetterBlizzPlatesDB.friendlyNameScale ~= friendlyNameScale
+
+    BetterBlizzPlatesDB.healthNumbersScale = healthNumberScale
+    BetterBlizzPlatesDB.enemyNameScale = nameScale
+    BetterBlizzPlatesDB.friendlyNameScale = friendlyNameScale
+
+    if changed and type(BBP) == "table" then
+        BBP.needsUpdate = true
+        if refreshNameplates
+            and not self.syncingBetterBlizzPlates
+            and type(BBP.RefreshAllNameplates) == "function"
+        then
+            self.syncingBetterBlizzPlates = true
+            pcall(BBP.RefreshAllNameplates)
+            self.syncingBetterBlizzPlates = false
+        end
+    end
+end
+
 function addon:HidePlate(unit)
     local plate = self.activePlates[unit]
     local guid = UnitGUID(unit)
@@ -947,6 +996,8 @@ function addon:ApplyAll()
     if not self.db then
         return
     end
+
+    self:SyncBetterBlizzPlatesTextScales(false)
 
     if C_NamePlate and C_NamePlate.GetNamePlates then
         for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
@@ -1109,6 +1160,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         local loadedAddon = ...
         if loadedAddon == "BetterBlizzPlates" and addon.db then
             addon:InstallCompatibilityHooks()
+            addon:SyncBetterBlizzPlatesTextScales(true)
             addon:ApplyAll()
             return
         end
@@ -1126,6 +1178,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
             addon:CreateMinimapButton()
         end
         addon:InstallCompatibilityHooks()
+        addon:SyncBetterBlizzPlatesTextScales(true)
 
         eventFrame:RegisterEvent("PLAYER_LOGIN")
         eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")

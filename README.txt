@@ -35,7 +35,7 @@ Funktionen
 - Sicherheitsabfrage vor dem Zurücksetzen aller Einstellungen
 - Level unabhängig von Namen und Nameplate zwischen 0,5 und 2,0 skalieren
 - Namen und sichtbare HP-Zahlen unabhängig zwischen 0,5 und 2,0 skalieren
-- Name- und HP-Größe bleiben auch bei BetterBlizzPlates-Updates erhalten
+- Name- und HP-Größe werden mit BetterBlizzPlates synchronisiert und sofort aktualisiert
 - Lange Namen werden vor der gemessenen HP-Zahl passend mit ... gekürzt
 - Goldene Standardmarkierung und Standardwert an jedem Regler
 - Beide Vorschauen verwenden die aktuell eingestellte Nameplate-Größe
