@@ -1,4 +1,4 @@
-BetterNameplates V1.1
+BetterNameplates V1.1.1
 ======================
 
 Eine schlanke Erweiterung für Blizzards "Modern" Nameplates in WoW Classic Era.
@@ -75,3 +75,15 @@ BNP setzt die relevanten Classic-Era-Skalierungswerte erneut, falls ein
 anderes Nameplate-Addon sie beim Login überschreibt.
 Friendly Nameplates in geschützten PvE-Instanzen können wegen einer
 Blizzard-Einschränkung nicht durch Addons verändert werden.
+
+
+V1.1.1 - 15 September 2026
+-------------------------
+- Fixed settings-window resizing: reduced the minimum size to 560 x 360 and removed the forced screen margin and fixed saved-size caps.
+- Added scrollable settings pages and width-aware content scaling so controls and previews remain accessible in smaller windows.
+- Enlarged the bottom-right resize grip and restricted resizing to the left mouse button.
+- Stabilized window anchoring, saved size and position, mouse-release handling, and closing during a resize; refresh resize bounds after resolution or UI-scale changes.
+- Added an account-wide, once-per-version login changelog notice that waits until combat ends and stays dismissed after closing, including after resetting settings.
+- Added the bundled Luna logo beside the heading "BNP - BetterNamePlates" and retained manual access through the Changelog tab.
+- Included the complete release history in the in-game changelog.
+- Updated addon metadata, localized changelog headings, and documentation to V1.1.1; set the Classic Era interface version to 11509 for client 1.15.9.

@@ -1,5 +1,6 @@
-local _, addon = ...
+local addonName, addon = ...
 local L = addon.L
+addon.version = (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(addonName, "Version")
 
 local ADDON_ICON = "Interface\\AddOns\\BetterNameplates\\assets\\bnp_logo.tga"
 local DISCORD_ICON = "Interface\\AddOns\\BetterNameplates\\assets\\discord_icon.tga"
@@ -7,75 +8,98 @@ local THREAT_TAB_ICON = "Interface\\Icons\\Ability_Druid_Cower"
 local DISCORD_URL = "https://discord.gg/ZfYDHV6Qgs"
 local DISCORD_DIALOG_KEY = "BETTERNAMEPLATES_DISCORD_LINK"
 local RESET_DIALOG_KEY = "BETTERNAMEPLATES_RESET_CONFIRM"
-local CHANGELOG_TEXT = [=[|cff9d8cffV1.1|r
+local MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT = 560, 360
+local CHANGELOG_TEXT = [=[V1.1.1 - 15 September 2026
+-------------------------
+- Fixed settings-window resizing: reduced the minimum size to 560 x 360 and removed the forced screen margin and fixed saved-size caps.
+- Added scrollable settings pages and width-aware content scaling so controls and previews remain accessible in smaller windows.
+- Enlarged the bottom-right resize grip and restricted resizing to the left mouse button.
+- Stabilized window anchoring, saved size and position, mouse-release handling, and closing during a resize; refresh resize bounds after resolution or UI-scale changes.
+- Added an account-wide, once-per-version login changelog notice that waits until combat ends and stays dismissed after closing, including after resetting settings.
+- Added the bundled Luna logo beside the heading "BNP - BetterNamePlates" and retained manual access through the Changelog tab.
+- Included the complete release history in the in-game changelog.
+- Updated addon metadata, localized changelog headings, and documentation to V1.1.1; set the Classic Era interface version to 11509 for client 1.15.9.
 
-|cffffd100Threat reliability and live updates|r
-• Increased the threat refresh rate to 0.1 seconds.
-• Bridges only one genuinely missing threat sample at low frame rates.
-• Explicit new values, including 0%, immediately replace stale cached 100%.
-• Fixed dynamic growth with visible full-frame scaling from the stable 0-100 threat percentage.
-• Dynamic maximum size can be freely set from 1.0 to 3.0.
-• Added Tiny Threat's blue cat icon to the Threat settings tab.
+V1.1
+----
 
-|cffffd100Controls and previews|r
-• Nameplate features can now be disabled while threat remains active.
-• Added separate scaling, level, threat, minimap, and live-preview switches.
-• Added live nameplate and animated threat previews.
-• Added independent 0.5-2.0 level scaling with the original 1.0 size as default.
-• Added independent 0.5-2.0 size controls for names and visible HP numbers.
-• Name and detected Blizzard HP text now use direct font-size changes.
-• Added /bnp debug to report detected live HP text and font size.
-• BNP name and HP sizes now directly synchronize with BetterBlizzPlates and refresh its cache.
-• Long names reserve the measured HP-number width and end in ... without overlap.
-• Fixed repeated updates bypassing name truncation because of retained anchors.
-• All sliders show their original default with a precisely aligned gold marker.
-• Both previews now mirror the configured nameplate size and proportions.
-• The nameplate preview also mirrors name, level, and HP-number sizes.
-• The settings window can be resized from the bottom-right corner and remembers its layout.
-• Reset now requires confirmation.
+Threat reliability and live updates
+- Increased the threat refresh rate from 0.2 to 0.1 seconds.
+- Reduced the low-FPS cache grace period to 0.11 seconds.
+- Cached threat is now used only for one genuinely missing API sample.
+- Explicit new values, including 0%, immediately replace the cache so a stale 100% cannot linger after aggro changes.
+- Switched dynamic growth to visible full-frame scaling from the stable 0-100 threat percentage.
+- Dynamic maximum size can be freely set from 1.0 to 3.0 without snapping upward.
+- Added Tiny Threat's blue Ability_Druid_Cower cat icon to the Threat settings tab.
 
-|cffffd100Classic level display|r
-• Enemy and neutral levels now use Blizzard's Classic difficulty colors.
-• Gray, green, yellow, orange, and red thresholds now match the default UI.
-• Removed the incorrect custom skull rule for enemies ten levels above the player.
-• A skull appears only for attackable bosses or enemies with a Blizzard-hidden level.
-• Friendly units never show a skull and use their available numeric/effective level.
+Controls and previews
+- Nameplate features can now be disabled without disabling threat.
+- Added a separate nameplate scaling switch.
+- Added live nameplate and animated threat previews to the settings.
+- Added a live-preview checkbox for both preview areas.
+- Added independent level scaling from 0.5 to 2.0; 1.0 preserves the original size.
+- Added independent 0.5 to 2.0 controls for unit-name and visible HP-number size.
+- Name scaling now changes the actual font size instead of relying on region scale.
+- HP text is discovered across Blizzard's different Classic/Modern health-bar frame layouts.
+- Numeric HP FontStrings are resized directly, including builds without BetterBlizzPlates.
+- Added /bnp debug to report the configured scales and detected live HP FontStrings.
+- Fixed BetterBlizzPlates overwriting BNP's name and HP-number size after its own updates.
+- BNP now synchronizes its sliders with BetterBlizzPlates' HP, enemy-name, and friendly-name scale settings.
+- BetterBlizzPlates' cached nameplate configuration is refreshed immediately after either BNP slider changes.
+- Long unit names now end in ... and reserve the measured width of visible HP numbers.
+- Fixed repeated name updates bypassing truncation because of retained font-string anchors.
+- Added a gold default marker aligned exactly with the slider thumb positions and a default-value label to every slider.
+- Nameplate and threat previews now use the configured nameplate size and proportions.
+- The nameplate preview also mirrors name, level, and HP-number sizes.
+- The settings window can now be resized from the bottom-right corner and remembers its size and position.
+- The Changelog layout now follows the resized window width.
+- Reset now requires confirmation, including /bnp reset.
 
-|cff9d8cffV1.0 - Initial Release|r
+Classic level display
+- Enemy and neutral level colors now use Blizzard's Classic difficulty-color API.
+- Gray, green, yellow, orange, and red levels now follow the same thresholds as the default UI.
+- Removed the incorrect custom rule that always showed a skull at ten levels above the player.
+- A skull is now shown only for attackable bosses or enemies whose level Blizzard reports as unknown.
+- Friendly units never show a skull and use their numeric/effective level with Blizzard's non-attackable color.
 
-|cffffd100Modern Nameplates extension|r
-• Extends Blizzard's Modern nameplates in WoW Classic Era without replacing them.
-• Uses Blizzard CVars for taint-safe nameplate scaling.
+V1.0 - Initial Release
+----------------------
 
-|cffffd100Nameplate size|r
-• Added stable nameplate scaling from 0.5 to 2.0 in 0.1 steps.
-• Added compact horizontal proportions at smaller scales.
+Modern Nameplates extension
+- Extends Blizzard's Modern nameplates in WoW Classic Era without replacing them.
+- Uses Blizzard CVars for taint-safe nameplate scaling.
 
-|cffffd100Unit levels|r
-• Added enemy, neutral, and friendly unit levels inside the health bar.
-• Added left and right placement beside the unit name.
-• Added [35], lvl. 35, and plain 35 formats.
-• Added gray, green, yellow, and red difficulty colors.
-• Added a larger skull indicator for enemies with an unknown level.
+Nameplate size
+- Added stable nameplate scaling from 0.5 to 2.0 in 0.1 steps.
+- Added compact horizontal proportions at smaller scales.
 
-|cffffd100Threat percentage|r
-• Added threat percentages to visible enemy nameplates.
-• Added display on all enemies or only the highest-threat enemy.
-• Added above/below placement with left, center, and right alignment.
-• Added size, signed vertical offset, and background opacity controls.
-• Added a text-only mode by setting background opacity to 0.
-• Added optional dynamic growth based on threat percentage and a configurable maximum size.
-• Added the option to show threat only while in combat and after threat has been generated.
-• Added optional percentage text coloring from green through yellow and orange to red.
+Unit levels
+- Added enemy, neutral, and friendly unit levels inside the health bar.
+- Added left and right placement beside the unit name.
+- Added [35], lvl. 35, and plain 35 formats.
+- Added gray, green, yellow, and red difficulty colors.
+- Added a larger skull indicator for enemies with an unknown level.
 
-|cffffd100Interface and compatibility|r
-• Added a movable tabbed BNP settings window.
-• Added a draggable BNP minimap button.
-• Added automatic localization for supported WoW client languages.
-• Added Classic Era unit-token fallbacks for reliable world nameplate updates.
-• Added safeguards against restricted-frame measurement and direct nameplate scaling taint.
+Threat percentage
+- Added threat percentages to visible enemy nameplates.
+- Added display on all enemies or only the highest-threat enemy.
+- Added above/below placement with left, center, and right alignment.
+- Added size, signed vertical offset, and background opacity controls.
+- Added a text-only mode by setting background opacity to 0.
+- Added optional dynamic growth based on threat percentage and a configurable maximum size.
+- Added the option to show threat only while in combat and after threat has been generated.
+- Added optional percentage text coloring from green through yellow and orange to red.
 
-|cffaaaaaaKnown Blizzard limitation: friendly nameplates cannot be modified by addons in protected PvE instances.|r]=]
+Interface and compatibility
+- Added a movable tabbed BNP settings window.
+- Added a draggable BNP minimap button.
+- Added a dedicated Changelog tab and Discord community link.
+- Added automatic localization for supported WoW client languages.
+- Added Classic Era unit-token fallbacks for reliable world nameplate updates.
+- Added safeguards against restricted-frame measurement and direct nameplate scaling taint.
+
+Known limitation
+- Friendly nameplates cannot be modified by addons in protected PvE instances.]=]
 
 local controls = {}
 local refreshing = false
@@ -571,10 +595,10 @@ local function CreateWindow()
     local window = CreateFrame("Frame", "BetterNameplatesWindow", UIParent, "BackdropTemplate")
     local parentWidth = UIParent:GetWidth() or 1920
     local parentHeight = UIParent:GetHeight() or 1080
-    local maximumWidth = math.max(720, parentWidth - 20)
-    local maximumHeight = math.max(650, parentHeight - 20)
-    local savedWidth = addon.Clamp(addon.db.optionsWindowWidth, 720, maximumWidth)
-    local savedHeight = addon.Clamp(addon.db.optionsWindowHeight, 650, maximumHeight)
+    local maximumWidth = math.max(MIN_WINDOW_WIDTH, parentWidth)
+    local maximumHeight = math.max(MIN_WINDOW_HEIGHT, parentHeight)
+    local savedWidth = addon.Clamp(addon.db.optionsWindowWidth, MIN_WINDOW_WIDTH, maximumWidth)
+    local savedHeight = addon.Clamp(addon.db.optionsWindowHeight, MIN_WINDOW_HEIGHT, maximumHeight)
 
     window:SetSize(math.floor(savedWidth + 0.5), math.floor(savedHeight + 0.5))
     if addon.db.optionsWindowX and addon.db.optionsWindowY then
@@ -596,17 +620,17 @@ local function CreateWindow()
     local function UpdateResizeBounds()
         local currentParentWidth = UIParent:GetWidth() or 1920
         local currentParentHeight = UIParent:GetHeight() or 1080
-        window.maxResizeWidth = math.max(720, currentParentWidth - 20)
-        window.maxResizeHeight = math.max(650, currentParentHeight - 20)
+        window.maxResizeWidth = math.max(MIN_WINDOW_WIDTH, currentParentWidth)
+        window.maxResizeHeight = math.max(MIN_WINDOW_HEIGHT, currentParentHeight)
         if window.SetResizeBounds then
             window:SetResizeBounds(
-                720,
-                650,
+                MIN_WINDOW_WIDTH,
+                MIN_WINDOW_HEIGHT,
                 window.maxResizeWidth,
                 window.maxResizeHeight
             )
         elseif window.SetMinResize then
-            window:SetMinResize(720, 650)
+            window:SetMinResize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
             if window.SetMaxResize then
                 window:SetMaxResize(
                     window.maxResizeWidth,
@@ -649,8 +673,8 @@ local function CreateWindow()
     end)
 
     local resize = CreateFrame("Button", nil, window)
-    resize:SetSize(18, 18)
-    resize:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -5, 5)
+    resize:SetSize(24, 24)
+    resize:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -2, 2)
     resize:SetFrameLevel(window:GetFrameLevel() + 10)
     resize.texture = resize:CreateTexture(nil, "ARTWORK")
     resize.texture:SetAllPoints()
@@ -661,45 +685,77 @@ local function CreateWindow()
     resize:SetScript("OnLeave", function(self)
         self.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     end)
-    resize:SetScript("OnMouseDown", function()
+    resize:SetScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" then return end
         NormalizeWindowTopLeft(window)
+        window.isResizing = true
+        -- Allow growth to the full screen even when the window starts off-center.
+        window:SetClampedToScreen(false)
         window:StartSizing("BOTTOMRIGHT")
     end)
-    resize:SetScript("OnMouseUp", function()
+    local function FinishResize()
+        if not window.isResizing then return end
+        window.isResizing = nil
         window:StopMovingOrSizing()
-        local width = math.min(
-            window.maxResizeWidth,
-            math.floor(window:GetWidth() + 0.5)
+        local width = addon.Clamp(
+            math.floor(window:GetWidth() + 0.5),
+            MIN_WINDOW_WIDTH, window.maxResizeWidth
         )
-        local height = math.min(
-            window.maxResizeHeight,
-            math.floor(window:GetHeight() + 0.5)
+        local height = addon.Clamp(
+            math.floor(window:GetHeight() + 0.5),
+            MIN_WINDOW_HEIGHT, window.maxResizeHeight
         )
         window:SetSize(width, height)
+        window:SetClampedToScreen(true)
         addon.db.optionsWindowWidth = width
         addon.db.optionsWindowHeight = height
         local left, top = NormalizeWindowTopLeft(window)
         addon.db.optionsWindowX = left
         addon.db.optionsWindowY = top
         addon:UpdateOptionsPreviews(true)
+    end
+    window.FinishResize = FinishResize
+    resize:SetScript("OnMouseUp", function(_, button)
+        if button == "LeftButton" then FinishResize() end
+    end)
+    window:SetScript("OnHide", function(self)
+        if self.updateNoticeVersion then
+            addon.db.lastDismissedChangelogVersion = self.updateNoticeVersion
+            self.updateNoticeVersion = nil
+        end
+        FinishResize()
+        self:StopMovingOrSizing()
+        local left, top = NormalizeWindowTopLeft(self)
+        addon.db.optionsWindowX = left
+        addon.db.optionsWindowY = top
+    end)
+    window:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    window:RegisterEvent("UI_SCALE_CHANGED")
+    window:SetScript("OnEvent", function()
+        FinishResize()
+        UpdateResizeBounds()
+        window:SetSize(
+            addon.Clamp(window:GetWidth(), MIN_WINDOW_WIDTH, window.maxResizeWidth),
+            addon.Clamp(window:GetHeight(), MIN_WINDOW_HEIGHT, window.maxResizeHeight)
+        )
     end)
     window.resizeButton = resize
 
     local logo = window:CreateTexture(nil, "ARTWORK")
     logo:SetPoint("TOPLEFT", window, "TOPLEFT", 22, -15)
     logo:SetSize(46, 46)
-    logo:SetTexture(ADDON_ICON)
+    logo:SetTexture("Interface\\AddOns\\BetterNameplates\\assets\\luna-logo.tga")
     logo:SetTexCoord(0, 1, 0, 1)
 
     local title = window:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 10, -5)
-    title:SetText("BetterNameplates |cff9d8cffV1.1|r")
+    title:SetText("BNP - BetterNamePlates")
 
     local subtitle = window:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    subtitle:SetWidth(590)
+    subtitle:SetPoint("RIGHT", window, "RIGHT", -40, 0)
     subtitle:SetJustifyH("LEFT")
-    subtitle:SetText(L.OPTIONS_SUBTITLE)
+    subtitle:SetText("V" .. addon.version .. " - " .. L.OPTIONS_SUBTITLE)
 
     local divider = window:CreateTexture(nil, "ARTWORK")
     divider:SetColorTexture(0.25, 0.65, 0.85, 0.55)
@@ -717,7 +773,9 @@ function addon:ResetOptionsWindowLayout()
     self.db.optionsWindowY = nil
 
     if self.optionsWindow then
+        self.optionsWindow.isResizing = nil
         self.optionsWindow:StopMovingOrSizing()
+        self.optionsWindow:SetClampedToScreen(true)
         self.optionsWindow:SetSize(
             self.defaults.optionsWindowWidth,
             self.defaults.optionsWindowHeight
@@ -790,6 +848,7 @@ local function CreateTabSystem(window)
                 button:SetBackdropBorderColor(0.35, 0.75, 1, 1)
                 button.text:SetTextColor(0.55, 0.88, 1)
                 button:LockHighlight()
+                if panel.viewport then panel.viewport:Show() end
                 panel:Show()
             else
                 button:SetBackdropColor(0.02, 0.065, 0.105, 0.92)
@@ -797,6 +856,7 @@ local function CreateTabSystem(window)
                 button.text:SetTextColor(0.78, 0.84, 0.9)
                 button:UnlockHighlight()
                 panel:Hide()
+                if panel.viewport then panel.viewport:Hide() end
             end
         end
     end
@@ -836,9 +896,36 @@ local function CreateTabSystem(window)
         tabs[definition.key] = button
 
         local panel = CreateFrame("Frame", nil, content)
-        panel:SetPoint("TOPLEFT", content, "TOPLEFT", 12, -12)
-        panel:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -12, 12)
+        if definition.key == "CHANGELOG" then
+            panel:SetPoint("TOPLEFT", content, "TOPLEFT", 12, -12)
+            panel:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -12, 12)
+        else
+            local scroll = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
+            scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 12, -12)
+            scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -30, 12)
+            local holder = CreateFrame("Frame", nil, scroll)
+            panel.viewport = scroll
+            scroll:SetScrollChild(holder)
+            panel:SetParent(holder)
+            panel:SetPoint("TOPLEFT")
+            local function UpdatePanelLayout()
+                local width = math.max(1, scroll:GetWidth())
+                local height = math.max(1, scroll:GetHeight())
+                -- Preserve the two-column layout, fitting narrow windows without clipping controls.
+                local scale = math.min(1, width / 500)
+                panel:SetScale(scale)
+                panel:SetSize(width / scale, math.max(510, height / scale))
+                holder:SetSize(width, panel:GetHeight() * scale)
+                local range = math.max(0, holder:GetHeight() - height)
+                scroll.ScrollBar:SetMinMaxValues(0, range)
+                scroll.ScrollBar:SetValue(math.min(scroll.ScrollBar:GetValue(), range))
+            end
+            scroll:SetScript("OnSizeChanged", UpdatePanelLayout)
+            panel:SetScript("OnShow", UpdatePanelLayout)
+            UpdatePanelLayout()
+        end
         panel:Hide()
+        if panel.viewport then panel.viewport:Hide() end
         panels[definition.key] = panel
     end
 
@@ -1452,6 +1539,9 @@ function addon:CreateOptions()
 
     local commandHint = window:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     commandHint:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", 21, 21)
+    commandHint:SetPoint("RIGHT", reset, "LEFT", -12, 0)
+    commandHint:SetJustifyH("LEFT")
+    commandHint:SetWordWrap(false)
     commandHint:SetText(L.OPEN_HINT)
 
     window:SetScript("OnShow", function()
@@ -1459,8 +1549,12 @@ function addon:CreateOptions()
             window:UpdateResizeBounds()
         end
         self:RefreshOptions()
+        NormalizeWindowTopLeft(window)
     end)
     window:SetScript("OnUpdate", function(_, elapsed)
+        if window.isResizing and not IsMouseButtonDown("LeftButton") then
+            window.FinishResize()
+        end
         if not threatPanel:IsShown()
             or not controls.threatLivePreview
             or not controls.threatLivePreview:GetChecked()
@@ -1523,6 +1617,17 @@ function addon:OpenOptions()
     self.optionsWindow:Show()
     self.optionsWindow:Raise()
     self:RefreshOptions()
+end
+
+function addon:TryShowUpdateNotice()
+    if not self.db or not self.optionsWindow or InCombatLockdown()
+        or self.db.lastDismissedChangelogVersion == self.version
+        or self.optionsWindow.updateNoticeVersion then
+        return
+    end
+    self.optionsWindow.updateNoticeVersion = self.version
+    self.SelectOptionsTab("CHANGELOG")
+    self:OpenOptions()
 end
 
 function addon:ToggleOptions()

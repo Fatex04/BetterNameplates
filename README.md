@@ -1,7 +1,7 @@
 # BetterNameplates
 WoW Classic Addon
 
-Aktuelle Version: V1.1
+Aktuelle Version: V1.1.1
 
 V1.1 aktualisiert die Threat-Anzeige alle 0,1 Sekunden, stabilisiert sie bei
 niedrigen Bildraten und korrigiert die dynamische Skalierung über den
@@ -22,3 +22,6 @@ zuständigen BetterBlizzPlates-Werten und aktualisiert dessen internen Cache.
 Level-Farben und Totenköpfe folgen der Blizzard-Classic-Logik; Verbündete zeigen
 immer ihr verfügbares Zahlenlevel. Das Einstellungsfenster ist unten rechts
 skalierbar und merkt sich Größe sowie Position.
+
+
+V1.1.1: Das Fenster lässt sich ab 560 × 360 bis zur Bildschirmgröße ziehen. Schmale Seiten passen ihre Inhaltsbreite an; kurze Fenster sind scrollbar. Beim ersten Login pro Version öffnet sich der vollständige Changelog mit Luna-Logo und der Überschrift BNP - BetterNamePlates. Nach dem Schließen bleibt der Hinweis accountweit ausgeblendet. Manuell erreichbar über /bnp → Changelog. Classic Era: 1.15.9 (Interface 11509).
