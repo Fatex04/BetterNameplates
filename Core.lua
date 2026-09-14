@@ -1207,7 +1207,9 @@ end
 
 function addon:ResetDatabase()
     wipe(self.threatCache)
+    local dismissedVersion = self.db.lastDismissedChangelogVersion
     BetterNameplatesDB = CopyTable(self.defaults)
+    BetterNameplatesDB.lastDismissedChangelogVersion = dismissedVersion
     self.db = BetterNameplatesDB
     if self.ResetOptionsWindowLayout then
         self:ResetOptionsWindowLayout()
@@ -1247,10 +1249,10 @@ local function InitializeDatabase()
         0.1
     )
     BetterNameplatesDB.optionsWindowWidth = math.floor(
-        Clamp(BetterNameplatesDB.optionsWindowWidth, 720, 3840) + 0.5
+        Clamp(BetterNameplatesDB.optionsWindowWidth, 560, math.huge) + 0.5
     )
     BetterNameplatesDB.optionsWindowHeight = math.floor(
-        Clamp(BetterNameplatesDB.optionsWindowHeight, 650, 2160) + 0.5
+        Clamp(BetterNameplatesDB.optionsWindowHeight, 360, math.huge) + 0.5
     )
     if BetterNameplatesDB.levelFormat ~= "BRACKETS"
         and BetterNameplatesDB.levelFormat ~= "PREFIX"
@@ -1400,10 +1402,12 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
             addon:ApplyNameplateScale()
         end
         addon:UpdateThreatDisplays()
+        if addon.TryShowUpdateNotice then addon:TryShowUpdateNotice() end
     elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         addon:ApplyNameplateScale()
         C_Timer.After(0, function()
             addon:ApplyAll()
+            if addon.TryShowUpdateNotice then addon:TryShowUpdateNotice() end
         end)
     end
 end)
