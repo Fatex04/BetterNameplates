@@ -3,7 +3,7 @@ BetterNameplates - CurseForge
 
 English summary
 ---------------
-BetterNameplates is a lightweight, taint-safe extension for Blizzard's Modern nameplates in WoW Classic Era that adds compact scaling, in-bar unit levels, and fully customizable dynamic threat percentages without replacing the default nameplates.
+BetterNameplates is a lightweight extension for Blizzard's Modern nameplates in WoW Classic Era and WoW: Forever (Camelot). It adds compact scaling, in-bar unit levels, and customizable threat percentages without replacing the default nameplates. The WoW: Forever flavor targets Interface 16001 and leaves Blizzard's native labels visible when combat data is restricted.
 
 V1.1.1 - 15 September 2026
 -------------------------

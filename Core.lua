@@ -48,6 +48,15 @@ end
 
 addon.Print = Print
 
+local compatibilityErrors = {}
+local function RecordCompatibilityError(message)
+    if not addon.isForever or type(message) ~= 'string' then return end
+    for _, entry in ipairs(compatibilityErrors) do
+        if entry.message == message then entry.count=entry.count+1; return end
+    end
+    if #compatibilityErrors < 20 then compatibilityErrors[#compatibilityErrors+1]={message=message,count=1} end
+end
+
 local function Clamp(value, minimum, maximum)
     value = tonumber(value) or minimum
     if value < minimum then
@@ -59,6 +68,15 @@ local function Clamp(value, minimum, maximum)
 end
 
 addon.Clamp = Clamp
+
+local function IsSecretValue(value)
+    if type(issecretvalue) ~= 'function' then
+        return false
+    end
+
+    local ok, isSecret = pcall(issecretvalue, value)
+    return ok and isSecret or false
+end
 
 local function RoundToStep(value, step)
     return math.floor((value / step) + 0.5) * step
@@ -127,6 +145,13 @@ function addon:ApplyNameplateScale()
 
     local value = string.format("%.1f", scale)
     local horizontalScale = GetNameplateHorizontalScale(scale)
+    if self.isForever then
+        if self.originalPlateStyle == nil and C_CVar.GetCVar then
+            self.originalPlateStyle = C_CVar.GetCVar('nameplateStyle')
+        end
+        SetScaleCVar('nameplateStyle', self.db.enabled and
+            tostring(Enum and Enum.NamePlateStyle and Enum.NamePlateStyle.Classic or 6) or self.originalPlateStyle or '6')
+    end
 
     SetScaleCVar("nameplateGlobalScale", "1")
     SetScaleCVar("nameplateMinScale", value)
@@ -143,6 +168,10 @@ function addon:ApplyNameplateScale()
     end
 end
 
+local function GetHealthBar(unitFrame)
+    return unitFrame and (unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar or unitFrame.healthBar)
+end
+
 local function GetUnitFrame(unit)
     if not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then
         return nil, nil
@@ -155,7 +184,7 @@ local function GetUnitFrame(unit)
     if plate.IsForbidden and plate:IsForbidden() then
         return plate, nil
     end
-    if not plate.UnitFrame or not plate.UnitFrame.healthBar then
+    if not plate.UnitFrame or not GetHealthBar(plate.UnitFrame) then
         return plate, nil
     end
 
@@ -163,7 +192,7 @@ local function GetUnitFrame(unit)
 end
 
 local function GetPlateUnit(plate)
-    if not plate then
+    if not plate or plate.IsForbidden and plate:IsForbidden() then
         return nil
     end
 
@@ -173,8 +202,9 @@ local function GetPlateUnit(plate)
         unit = unitFrame.unit or unitFrame.displayedUnit
     end
 
-    if unit and UnitExists(unit) then
-        return unit
+    if not IsSecretValue(unit) and unit then
+        local exists = UnitExists(unit)
+        if not IsSecretValue(exists) and exists then return unit end
     end
     return nil
 end
@@ -237,13 +267,25 @@ local function CreateOverlay(plate, unitFrame)
     return overlay
 end
 
+local function SafeCreateOverlay(plate, unitFrame)
+    local ok, overlay = pcall(CreateOverlay, plate, unitFrame)
+    if ok then return overlay end
+    RecordCompatibilityError(overlay)
+    return nil
+end
+
 local function ShouldShowLevel(unit)
     local db = addon.db
     if not db.enabled or not db.showLevel or not UnitExists(unit) then
         return false
     end
 
-    if UnitCanAttack("player", unit) then
+    local canAttack = UnitCanAttack("player", unit)
+    if IsSecretValue(canAttack) then
+        return canAttack
+    end
+
+    if canAttack then
         return db.showEnemyLevel
     end
 
@@ -294,6 +336,10 @@ local function GetVisibleNumericText(region)
 end
 
 local function FindHealthNumbers(unitFrame, overlay)
+    if addon.isForever then
+        local bar = GetHealthBar(unitFrame)
+        return bar and (bar.Text or bar.TextString or bar.RightText)
+    end
     local bestRegion
     local bestScore = -1
     local visited = {}
@@ -353,7 +399,7 @@ local function FindHealthNumbers(unitFrame, overlay)
         end
     end
 
-    local healthBar = unitFrame.healthBar
+    local healthBar = GetHealthBar(unitFrame)
     local explicitCandidates = {
         unitFrame.healthNumbers,
         unitFrame.healthText,
@@ -489,15 +535,15 @@ local function GetHealthNumbersInset(unitFrame, overlay, barWidth)
 
     local visualScale = 1
     if healthNumbers.GetEffectiveScale
-        and unitFrame.healthBar.GetEffectiveScale
+        and GetHealthBar(unitFrame).GetEffectiveScale
     then
         local numberOK, numberScale = pcall(
             healthNumbers.GetEffectiveScale,
             healthNumbers
         )
         local barOK, barScale = pcall(
-            unitFrame.healthBar.GetEffectiveScale,
-            unitFrame.healthBar
+            GetHealthBar(unitFrame).GetEffectiveScale,
+            GetHealthBar(unitFrame)
         )
         if numberOK
             and barOK
@@ -517,14 +563,21 @@ local function GetHealthNumbersInset(unitFrame, overlay, barWidth)
 end
 
 local function GetLevelDisplay(unit, level)
-    local playerLevel = UnitLevel("player") or 1
+    local playerLevel = UnitLevel("player")
     local classification = UnitClassification and UnitClassification(unit)
     local isAttackable = UnitCanAttack and UnitCanAttack("player", unit)
+
+    if IsSecretValue(level) or not level or IsSecretValue(playerLevel) or IsSecretValue(classification) or
+        IsSecretValue(isAttackable) then
+        return nil
+    end
+    playerLevel = playerLevel or 1
 
     -- Blizzard can conceal an enemy's level as -1. Friendly units should keep
     -- their numeric level whenever the client exposes an effective level.
     if not isAttackable and level < 0 and UnitEffectiveLevel then
         local effectiveLevel = UnitEffectiveLevel(unit)
+        if IsSecretValue(effectiveLevel) then return nil end
         if effectiveLevel and effectiveLevel > 0 then
             level = effectiveLevel
         end
@@ -669,26 +722,78 @@ end
 
 addon.TruncateToWidth = TruncateToWidth
 
+local stockFonts = setmetatable({}, {__mode = 'k'})
+local function ReadableStockFont(region, size, enabled)
+    if not region or not region.GetFont or region.IsForbidden and region:IsForbidden() then return end
+    local base = stockFonts[region]
+    if not base then
+        local file, height, flags = region:GetFont()
+        if IsSecretValue(height) then return end
+        base = {file or STANDARD_TEXT_FONT, height or 11, flags or '',
+            shadowColor={region:GetShadowColor()}, shadowOffset={region:GetShadowOffset()}}
+        stockFonts[region] = base
+    end
+    region:SetFont(base[1], enabled and size or base[2], enabled and 'OUTLINE' or base[3])
+    if enabled then
+        region:SetShadowColor(0, 0, 0, 1)
+        region:SetShadowOffset(1, -1)
+    else
+        region:SetShadowColor(unpack(base.shadowColor))
+        region:SetShadowOffset(unpack(base.shadowOffset))
+        stockFonts[region] = nil
+    end
+end
+
+local function ApplyStockPlate(unit, unitFrame, overlay)
+    -- Keep Blizzard's name, level, skull, health bars and classic plate art.
+    -- No inline replacement, no text scanning and no conversion of secret HP.
+    RestoreBlizzardName(unitFrame, overlay)
+    overlay.inlineName:Hide()
+    overlay.inlineLevel:Hide()
+    local db = addon.db
+    ReadableStockFont(unitFrame.name, 12 * Clamp(db.nameScale, 0.5, 2), db.enabled)
+    local bar = GetHealthBar(unitFrame)
+    if bar then
+        for _, text in ipairs({bar.Text or false, bar.TextString or false, bar.LeftText or false, bar.RightText or false}) do
+            if text then ReadableStockFont(text, 12 * Clamp(db.healthNumberScale, 0.5, 2), db.enabled) end
+        end
+    end
+    local level = unitFrame.LevelFrame and unitFrame.LevelFrame.LevelText
+    ReadableStockFont(level, 13 * Clamp(db.levelScale, 0.5, 2), db.enabled)
+    if level then
+        local visible = ShouldShowLevel(unit)
+        if not IsSecretValue(visible) then level:SetAlpha(db.enabled and not visible and 0 or 1) end
+    end
+end
+
 local function UpdateLevel(unit, unitFrame, overlay)
+    if addon.isForever then ApplyStockPlate(unit, unitFrame, overlay); return end
     local inlineName = overlay.inlineName
     local inlineLevel = overlay.inlineLevel
     local nameText = unitFrame.name
 
     ApplyTextScales(unitFrame, overlay)
 
-    if not ShouldShowLevel(unit) then
+    local canShowLevel = ShouldShowLevel(unit)
+    if IsSecretValue(canShowLevel) or not canShowLevel then
         RestoreBlizzardName(unitFrame, overlay)
         return
     end
 
     local level = UnitLevel(unit)
-    if not level or level == 0 then
+    if IsSecretValue(level) or not level or level == 0 then
         RestoreBlizzardName(unitFrame, overlay)
         return
     end
 
     local unitName = UnitName(unit)
-    if not unitName or unitName == "" then
+    if IsSecretValue(unitName) or not unitName or unitName == "" then
+        RestoreBlizzardName(unitFrame, overlay)
+        return
+    end
+
+    local levelDisplay = GetLevelDisplay(unit, level)
+    if not levelDisplay then
         RestoreBlizzardName(unitFrame, overlay)
         return
     end
@@ -719,13 +824,12 @@ local function UpdateLevel(unit, unitFrame, overlay)
         "OUTLINE"
     )
 
-    local levelDisplay = GetLevelDisplay(unit, level)
     inlineName:ClearAllPoints()
     inlineLevel:ClearAllPoints()
     inlineLevel:SetWidth(0)
     inlineLevel:SetText(levelDisplay)
 
-    local barWidth = unitFrame.healthBar:GetWidth()
+    local barWidth = GetHealthBar(unitFrame):GetWidth()
     if not barWidth or barWidth <= 0 then
         barWidth = 120
     end
@@ -742,18 +846,18 @@ local function UpdateLevel(unit, unitFrame, overlay)
     if nameForbidden then
         inlineName:Hide()
         if addon.db.levelSide == "LEFT" then
-            inlineLevel:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
+            inlineLevel:SetPoint("LEFT", GetHealthBar(unitFrame), "LEFT", 5, 0)
         else
-            inlineLevel:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
+            inlineLevel:SetPoint("RIGHT", GetHealthBar(unitFrame), "RIGHT", -rightInset, 0)
         end
     elseif addon.db.levelSide == "LEFT" then
-        inlineLevel:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
+        inlineLevel:SetPoint("LEFT", GetHealthBar(unitFrame), "LEFT", 5, 0)
         inlineName:SetPoint("LEFT", inlineLevel, "RIGHT", gap, 0)
-        inlineName:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
+        inlineName:SetPoint("RIGHT", GetHealthBar(unitFrame), "RIGHT", -rightInset, 0)
         inlineName:SetJustifyH("LEFT")
     else
-        inlineLevel:SetPoint("RIGHT", unitFrame.healthBar, "RIGHT", -rightInset, 0)
-        inlineName:SetPoint("LEFT", unitFrame.healthBar, "LEFT", 5, 0)
+        inlineLevel:SetPoint("RIGHT", GetHealthBar(unitFrame), "RIGHT", -rightInset, 0)
+        inlineName:SetPoint("LEFT", GetHealthBar(unitFrame), "LEFT", 5, 0)
         inlineName:SetPoint("RIGHT", inlineLevel, "LEFT", -gap, 0)
         inlineName:SetJustifyH("LEFT")
     end
@@ -765,6 +869,20 @@ local function UpdateLevel(unit, unitFrame, overlay)
     inlineLevel:Show()
 end
 
+local function SafeUpdateLevel(unit, unitFrame, overlay)
+    local ok, message = pcall(UpdateLevel, unit, unitFrame, overlay)
+    if ok then return end
+    RecordCompatibilityError(message)
+
+    pcall(RestoreBlizzardName, unitFrame, overlay)
+    if overlay then
+        pcall(function()
+            overlay.inlineName:Hide()
+            overlay.inlineLevel:Hide()
+        end)
+    end
+end
+
 local function IsEnemyUnit(unit)
     return UnitExists(unit)
         and not UnitIsDeadOrGhost(unit)
@@ -773,7 +891,7 @@ end
 
 local THREAT_CACHE_GRACE = 0.11
 
-local function GetThreatData(unit)
+local function GetThreatDataUnsafe(unit)
     if not IsEnemyUnit(unit) then
         return nil
     end
@@ -831,6 +949,14 @@ local function GetThreatData(unit)
     return percentage, status
 end
 
+local function GetThreatData(unit)
+    local ok, percentage, status = pcall(GetThreatDataUnsafe, unit)
+    if not ok or IsSecretValue(percentage) or IsSecretValue(status) then
+        return nil
+    end
+    return percentage, status
+end
+
 local function InterpolateColor(fromR, fromG, fromB, toR, toG, toB, progress)
     return fromR + ((toR - fromR) * progress),
         fromG + ((toG - fromG) * progress),
@@ -872,7 +998,7 @@ end
 
 local function SetThreatPosition(threatFrame, unitFrame, position, offset)
     threatFrame:ClearAllPoints()
-    local anchor = unitFrame.healthBar
+    local anchor = GetHealthBar(unitFrame)
 
     if position == "TOPLEFT" then
         threatFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, offset)
@@ -977,24 +1103,26 @@ function addon:UpdateThreatDisplays()
         local forbidden = plate and plate.IsForbidden and plate:IsForbidden()
         if UnitExists(unit)
             and unitFrame
-            and unitFrame.healthBar
+            and GetHealthBar(unitFrame)
             and not forbidden
         then
-            local overlay = CreateOverlay(plate, unitFrame)
-            local percentage, status = GetThreatData(unit)
-            local candidate = {
-                unit = unit,
-                unitFrame = unitFrame,
-                overlay = overlay,
-                percentage = percentage,
-                status = status,
-            }
-            candidates[#candidates + 1] = candidate
+            local overlay = SafeCreateOverlay(plate, unitFrame)
+            if overlay then
+                local percentage, status = GetThreatData(unit)
+                local candidate = {
+                    unit = unit,
+                    unitFrame = unitFrame,
+                    overlay = overlay,
+                    percentage = percentage,
+                    status = status,
+                }
+                candidates[#candidates + 1] = candidate
 
-            if percentage ~= nil
-                and (not highest or percentage > highest.percentage)
-            then
-                highest = candidate
+                if percentage ~= nil
+                    and (not highest or percentage > highest.percentage)
+                then
+                    highest = candidate
+                end
             end
         elseif not UnitExists(unit) then
             self.activePlates[unit] = nil
@@ -1006,7 +1134,8 @@ function addon:UpdateThreatDisplays()
         if self.db.threatDisplayMode == "HIGHEST" then
             shouldShow = shouldShow and candidate == highest
         end
-        UpdateThreatOverlay(
+        local ok = pcall(
+            UpdateThreatOverlay,
             candidate.unit,
             candidate.unitFrame,
             candidate.overlay,
@@ -1014,6 +1143,7 @@ function addon:UpdateThreatDisplays()
             candidate.percentage,
             candidate.status
         )
+        if not ok then pcall(HideThreat, candidate.overlay) end
     end
 end
 
@@ -1028,11 +1158,13 @@ function addon:UpdatePlate(unit)
     end
 
     self.activePlates[unit] = plate
-    local overlay = CreateOverlay(plate, unitFrame)
-    UpdateLevel(unit, unitFrame, overlay)
+    local overlay = SafeCreateOverlay(plate, unitFrame)
+    if not overlay then return end
+    SafeUpdateLevel(unit, unitFrame, overlay)
     if self.db.threatDisplayMode == "ALL" then
         local percentage, status = GetThreatData(unit)
-        UpdateThreatOverlay(
+        local ok = pcall(
+            UpdateThreatOverlay,
             unit,
             unitFrame,
             overlay,
@@ -1040,6 +1172,7 @@ function addon:UpdatePlate(unit)
             percentage,
             status
         )
+        if not ok then pcall(HideThreat, overlay) end
     else
         self:UpdateThreatDisplays()
     end
@@ -1049,7 +1182,7 @@ function addon:RefreshCompatibleUnitFrame(unitFrame)
     if not self.db
         or not unitFrame
         or not unitFrame.unit
-        or not unitFrame.healthBar
+        or not GetHealthBar(unitFrame)
     then
         return
     end
@@ -1063,11 +1196,19 @@ function addon:RefreshCompatibleUnitFrame(unitFrame)
     end
 
     self.activePlates[unitFrame.unit] = plate
-    local overlay = CreateOverlay(plate, unitFrame)
-    UpdateLevel(unitFrame.unit, unitFrame, overlay)
+    local overlay = SafeCreateOverlay(plate, unitFrame)
+    if not overlay then return end
+    SafeUpdateLevel(unitFrame.unit, unitFrame, overlay)
 end
 
 function addon:InstallCompatibilityHooks()
+    if self.isForever and not self.stockHooksInstalled and NamePlateDriverFrame and
+        type(NamePlateDriverFrame.UpdateNamePlateOptions) == 'function' then
+        self.stockHooksInstalled = true
+        hooksecurefunc(NamePlateDriverFrame, 'UpdateNamePlateOptions', function()
+            C_Timer.After(0, function() if addon.db then addon:ApplyAll() end end)
+        end)
+    end
     if self.betterBlizzPlatesHooksInstalled
         or not hooksecurefunc
         or type(BBP) ~= "table"
@@ -1095,6 +1236,7 @@ function addon:InstallCompatibilityHooks()
 end
 
 function addon:SyncBetterBlizzPlatesTextScales(refreshNameplates)
+    if self.isForever then return end
     if not self.db or type(BetterBlizzPlatesDB) ~= "table" then
         return
     end
@@ -1146,7 +1288,7 @@ end
 function addon:HidePlate(unit)
     local plate = self.activePlates[unit]
     local guid = UnitGUID(unit)
-    if guid then
+    if not IsSecretValue(guid) and guid then
         self.threatCache[guid] = nil
     end
     if plate and plate.BetterNameplatesOverlay then
@@ -1341,6 +1483,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         end
 
         InitializeDatabase()
+        if addon.isForever then addon.db.foreverDiagnostics={version='1.3.0',errors=compatibilityErrors} end
         addon:ApplyNameplateScale()
 
         if addon.CreateOptions then
@@ -1458,6 +1601,11 @@ SlashCmdList.BETTERNAMEPLATES = function(message)
             addon:RequestReset()
         end
     elseif command == "debug" then
+        if addon.isForever then
+            Print('1.3.0 | Classic stock plates | native health/level labels | /bnp')
+            for _, entry in ipairs(compatibilityErrors) do Print(entry.message) end
+            return
+        end
         Print(string.format(
             "nameScale=%.1f, healthNumberScale=%.1f",
             addon.db.nameScale,
@@ -1468,7 +1616,7 @@ SlashCmdList.BETTERNAMEPLATES = function(message)
             for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
                 local unitFrame = plate.UnitFrame
                 local unit = GetPlateUnit(plate)
-                if unitFrame and unitFrame.healthBar and unit then
+                if unitFrame and GetHealthBar(unitFrame) and unit then
                     local overlay = CreateOverlay(plate, unitFrame)
                     local healthNumbers = FindHealthNumbers(unitFrame, overlay)
                     if healthNumbers then

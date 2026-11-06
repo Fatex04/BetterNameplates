@@ -1,9 +1,23 @@
+V1.3.0 - 6 November 2026
+-------------------------
+- Uses Forever's stock Classic nameplate style with readable native name, HP and level fonts.
+- Supports HealthBarsContainer.healthBar without injecting legacy aliases into native frames.
+- Preserves stock level/skull art and removes duplicate inline labels.
+- Restores fonts/shadows when disabled and avoids protected HP-text scanning.
+- Updates the Classic preview, localized descriptions, manifest aliases and regression coverage.
+
 BetterNameplates Changelog
 ==========================
 
 Discord
 -------
 https://discord.gg/ZfYDHV6Qgs
+
+V1.2.0 - 5 November 2026
+------------------------
+- Added a WoW: Forever (Camelot) TOC for Interface 16001 while preserving the Classic Era package.
+- Preserved the existing nameplate appearance and made custom name/level overlays fall back to Blizzard's native label when combat values are restricted.
+- Skipped threat updates when the client withholds threat values, avoiding repeated errors and stale overlays.
 
 V1.1.1 - 15 September 2026
 -------------------------

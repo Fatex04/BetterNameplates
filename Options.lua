@@ -1,6 +1,6 @@
 local addonName, addon = ...
 local L = addon.L
-addon.version = (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(addonName, "Version")
+addon.version = addon.isForever and '1.3.0' or (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(addonName, "Version")
 
 local ADDON_ICON = "Interface\\AddOns\\BetterNameplates\\assets\\bnp_logo.tga"
 local DISCORD_ICON = "Interface\\AddOns\\BetterNameplates\\assets\\discord_icon.tga"
@@ -9,7 +9,21 @@ local DISCORD_URL = "https://discord.gg/ZfYDHV6Qgs"
 local DISCORD_DIALOG_KEY = "BETTERNAMEPLATES_DISCORD_LINK"
 local RESET_DIALOG_KEY = "BETTERNAMEPLATES_RESET_CONFIRM"
 local MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT = 560, 360
-local CHANGELOG_TEXT = [=[V1.1.1 - 15 September 2026
+local CHANGELOG_TEXT = [=[V1.3.0 - 6 November 2026
+-------------------------
+- Uses Forever's original Classic nameplate art, health bars, level and skull.
+- Larger outlined native numbers and names with a dark shadow.
+- No duplicate inline names or modern plate replacement.
+- Preserves native combat updates, threat support and existing BNP settings.
+
+V1.2.0 - 5 November 2026
+-------------------------
+- Added a dedicated WoW: Forever (Camelot) flavor for Interface 16001 while preserving the Classic Era package.
+- Kept BNP on Blizzard's modern nameplates and preserved the existing level, name, scaling, and threat visuals.
+- Safely skip custom overlays when combat-restricted name or level values cannot be read; Blizzard's native name stays visible.
+- Suppress threat updates when Forever returns restricted or unavailable threat values, without raising repeated Lua errors.
+
+V1.1.1 - 15 September 2026
 -------------------------
 - Fixed settings-window resizing: reduced the minimum size to 560 x 360 and removed the forced screen margin and fixed saved-size caps.
 - Added scrollable settings pages and width-aware content scaling so controls and previews remain accessible in smaller windows.
@@ -330,6 +344,36 @@ local function UpdateNameplatePreview(force)
     end
 
     local scale, width, height = GetPreviewNameplateDimensions()
+    if addon.isForever then
+        local borderWidth, borderHeight = 160 * scale, 20 * scale
+        preview.healthBar:SetSize(borderWidth-29*scale,12.5*scale)
+        preview.healthBar:SetStatusBarTexture('Interface\\TargetingFrame\\UI-TargetingFrame-BarFill')
+        preview.healthBar:SetStatusBarColor(0.9,0.75,0.05,1)
+        preview.healthBar:SetBackdropBorderColor(0,0,0,0)
+        preview.healthBar:SetValue(72)
+        if not preview.stockBorder then
+            preview.stockBorder=preview.healthBar:CreateTexture(nil,'ARTWORK',nil,1)
+            preview.stockBorder:SetTexture('Interface\\Tooltips\\Nameplate-Border')
+            preview.stockBorder:SetTexCoord(0,1,0.5,1)
+            preview.stockBorder:SetPoint('CENTER',preview.healthBar,'CENTER',11*scale,0)
+        end
+        preview.stockBorder:SetSize(borderWidth,borderHeight)
+        preview.name:ClearAllPoints()
+        preview.name:SetPoint('BOTTOM',preview.healthBar,'TOP',0,4*scale)
+        preview.name:SetFont(STANDARD_TEXT_FONT,12*scale*addon.db.nameScale,'OUTLINE')
+        preview.name:SetText(L.PREVIEW_UNIT_NAME)
+        preview.level:ClearAllPoints()
+        preview.level:SetPoint('LEFT',preview.healthBar,'RIGHT',3*scale,0)
+        preview.level:SetFont(STANDARD_TEXT_FONT,13*scale*addon.db.levelScale,'OUTLINE')
+        preview.level:SetText('|cffffd10035|r')
+        preview.level:SetShown(addon.db.enabled and addon.db.showLevel and addon.db.showEnemyLevel)
+        preview.healthNumbers:ClearAllPoints()
+        preview.healthNumbers:SetPoint('CENTER',preview.healthBar,'CENTER',0,0)
+        preview.healthNumbers:SetFont(STANDARD_TEXT_FONT,12*scale*addon.db.healthNumberScale,'OUTLINE')
+        preview.healthNumbers:SetText('1212')
+        preview.scaleText:SetText(string.format(L.PREVIEW_SCALE,scale))
+        return
+    end
     preview.healthBar:SetSize(width, height)
     preview.healthBar:SetValue(72)
     preview.name:SetFont(
@@ -449,7 +493,7 @@ local function CreateSideDropdown(parent, x, y)
     dropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     UIDropDownMenu_SetWidth(dropdown, 125)
 
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    local label = dropdown:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     label:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 18, 2)
     label:SetText(L.LEVEL_POSITION)
 
@@ -481,7 +525,7 @@ local function CreateFormatDropdown(parent, x, y)
     dropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     UIDropDownMenu_SetWidth(dropdown, 125)
 
-    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    local label = dropdown:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     label:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 18, 2)
     label:SetText(L.LEVEL_FORMAT)
 
@@ -1388,6 +1432,14 @@ function addon:CreateOptions()
     )
     controls.levelSide = CreateSideDropdown(levelPanel, 16, -277)
     controls.levelFormat = CreateFormatDropdown(levelPanel, 255, -277)
+    if self.isForever then
+        controls.levelSide:Hide()
+        controls.levelFormat:Hide()
+        controls.levelColor:Hide()
+        friendlyHint:SetText(addon.locale=='deDE'
+            and 'Position, Farben und Totenkopf folgen den originalen Classic-Namensplaketten.'
+            or 'Position, difficulty colors and skulls follow the original Classic nameplates.')
+    end
 
     CreateChangelogPanel(changelogPanel)
 

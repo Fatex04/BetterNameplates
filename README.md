@@ -1,27 +1,30 @@
-# BetterNameplates
-WoW Classic Addon
+# BetterNameplates für WoW Forever
 
-Aktuelle Version: V1.1.1
+Version 1.3.0 · Interface 16001 (Camelot)
 
-V1.1 aktualisiert die Threat-Anzeige alle 0,1 Sekunden, stabilisiert sie bei
-niedrigen Bildraten und korrigiert die dynamische Skalierung über den
-0–100-%-Threatwert. Nameplate-Funktionen lassen sich unabhängig von Threat
-abschalten. Die Einstellungen enthalten außerdem Live-Vorschauen und eine
-Bestätigung vor dem Zurücksetzen. Der Threat-Tab verwendet das blaue
-Katzen-Icon von Details Tiny Threat; die Anzeige auf Nameplates bleibt textbasiert.
-Echte neue Threat-Werte ersetzen den kurzen Flackerschutz sofort, sodass 100 %
-nach einem Aggro-Wechsel nicht mehr aus dem Cache stehen bleiben.
-Level lassen sich unabhängig skalieren, lange Namen werden mit `...` gekürzt,
-und alle Regler zeigen ihren jeweiligen Standardwert exakt an der Reglerposition.
-Auch Namen und sichtbare HP-Zahlen lassen sich getrennt skalieren; die Kürzung
-reserviert automatisch die tatsächlich benötigte Breite der HP-Zahl.
-BNP erkennt dafür die unterschiedlichen Blizzard-Healthbar-Strukturen und
-ändert die tatsächliche Fontgröße statt nur die Skalierung des Regionsrahmens.
-Eine Kompatibilitätsschicht synchronisiert die BNP-Regler direkt mit den
-zuständigen BetterBlizzPlates-Werten und aktualisiert dessen internen Cache.
-Level-Farben und Totenköpfe folgen der Blizzard-Classic-Logik; Verbündete zeigen
-immer ihr verfügbares Zahlenlevel. Das Einstellungsfenster ist unten rechts
-skalierbar und merkt sich Größe sowie Position.
+Die eigenständige Forever-Ausgabe wird im Branch `forever` dieses BNP-Repositories
+gepflegt. Der Branch `main` enthält weiterhin die Classic-Era-Ausgabe. BNP besitzt
+eigene Laufzeitdateien, Grafiken, Einstellungen und Tests; ein anderes UI-Addon
+ist dafür nicht erforderlich.
 
+BNP verwendet die originalen **Classic-Namensplaketten** von Forever. Namen,
+HP-Zahlen und Level bleiben native Beschriftungen und erhalten eine größere
+Schrift mit Kontur und dunklem Schatten. Die Classic-Umrandung, Levelposition,
+Schwierigkeitsfarben, Totenköpfe, Auswahl und Gesundheitsupdates bleiben erhalten.
 
-V1.1.1: Das Fenster lässt sich ab 560 × 360 bis zur Bildschirmgröße ziehen. Schmale Seiten passen ihre Inhaltsbreite an; kurze Fenster sind scrollbar. Beim ersten Login pro Version öffnet sich der vollständige Changelog mit Luna-Logo und der Überschrift BNP - BetterNamePlates. Nach dem Schließen bleibt der Hinweis accountweit ausgeblendet. Manuell erreichbar über /bnp → Changelog. Classic Era: 1.15.9 (Interface 11509).
+Der Adapter unterstützt Forevers neue verschachtelte Healthbar-Struktur.
+Doppelte Inline-Namen und Modern-Platten werden nicht erzeugt. BNP liest oder
+formatiert keine eingeschränkten HP-, Namens- oder Leveltexte. Wenn Threatdaten
+nicht verfügbar sind, bleibt nur BNPs eigenes Threat-Schild verborgen.
+
+Öffnen mit `/bnp` oder `/betternameplates`. Skalierung sowie Namen-, HP- und
+Level-Schriftgrößen sind getrennt einstellbar; die Vorschau zeigt Classic-Artwork.
+Die vorhandenen BNP-Einstellungen bleiben erhalten. BetterBlizzPlates-Variablen
+werden in der Forever-Version nicht umgeschrieben.
+
+Den Ordner `BetterNameplates` nach `_forever_/Interface/AddOns` kopieren. Die
+Basis-, Camelot- und Forever-Manifeste laden dieselbe Forever-Version. Die
+unveränderte Classic-Era-Ausgabe liegt im ursprünglichen BNP-Repository.
+
+Regressionen: `python tests/forever_native.py` (Python + lupa, Lua 5.1; verwendet
+die lokale Widget-Fixture unter `tests/forever_native_fixture.lua`).

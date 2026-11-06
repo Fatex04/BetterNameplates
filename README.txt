@@ -1,5 +1,12 @@
-BetterNameplates V1.1.1
-======================
+BetterNameplates
+================
+
+Classic Era: V1.1.1
+WoW: Forever (Camelot): V1.2.0, Interface 16001
+
+Die Forever-Version verwendet Blizzards moderne Nameplates und erhält BNPs
+bestehende Level-, Namen-, Skalierungs- und Threat-Darstellung. Wenn der Client
+einen Combat-Wert für AddOns einschränkt, bleibt Blizzards native Anzeige stehen.
 
 Eine schlanke Erweiterung für Blizzards "Modern" Nameplates in WoW Classic Era.
 

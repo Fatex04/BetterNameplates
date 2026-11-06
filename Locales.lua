@@ -657,3 +657,10 @@ end
 
 addon.L = L
 addon.locale = locale
+
+if addon.isForever then
+    L.CHANGELOG_TITLE = L.CHANGELOG_TITLE:gsub('1%.1%.1','1.3.0')
+    L.OPTIONS_SUBTITLE = locale == 'deDE'
+        and 'Classic-Namensplaketten für WoW Forever mit gut lesbaren Zahlen'
+        or 'Stock Classic nameplates for WoW Forever with readable numbers'
+end
